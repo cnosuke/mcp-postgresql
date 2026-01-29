@@ -1,0 +1,14 @@
+log: 'mcp-postgresql.log'
+debug: false
+
+postgresql:
+  host: 'localhost'
+  user: 'postgres'
+  password: ''
+  port: 5432
+  database: 'postgres'
+  schema: 'public'
+  sslmode: 'disable'
+  dsn: ''
+  read_only: false
+  query_timeout: 30
