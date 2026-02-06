@@ -20,6 +20,13 @@ type Config struct {
 		ReadOnly     bool   `yaml:"read_only" default:"false" env:"POSTGRES_READ_ONLY"`
 		QueryTimeout int    `yaml:"query_timeout" default:"30" env:"POSTGRES_QUERY_TIMEOUT"`
 	} `yaml:"postgresql"`
+	HTTP struct {
+		Host           string   `yaml:"host" default:"127.0.0.1" env:"HTTP_HOST"`
+		Port           int      `yaml:"port" default:"8080" env:"HTTP_PORT"`
+		Endpoint       string   `yaml:"endpoint" default:"/mcp" env:"HTTP_ENDPOINT"`
+		AuthToken      string   `yaml:"auth_token" default:"" env:"HTTP_AUTH_TOKEN"`
+		AllowedOrigins []string `yaml:"allowed_origins" env:"HTTP_ALLOWED_ORIGINS"`
+	} `yaml:"http"`
 }
 
 // LoadConfig - Load configuration file

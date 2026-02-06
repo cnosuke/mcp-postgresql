@@ -31,10 +31,8 @@ var (
 	}
 )
 
-// Run - Execute the MCP server
-func Run(cfg *config.Config, name string, version string, revision string) error {
-	zap.S().Infow("starting MCP PostgreSQL Server")
-
+// NewMCPServer creates and configures an MCPServer with all tools registered
+func NewMCPServer(cfg *config.Config, name, version, revision string) (*server.MCPServer, error) {
 	// Set read-only mode in DBManager
 	dbManager.SetReadOnly(cfg.PostgreSQL.ReadOnly)
 
@@ -54,7 +52,6 @@ func Run(cfg *config.Config, name string, version string, revision string) error
 		)
 	})
 
-	// Create MCP server with server name and version
 	zap.S().Debugw("creating MCP server",
 		"name", name,
 		"version", versionString,
@@ -65,22 +62,30 @@ func Run(cfg *config.Config, name string, version string, revision string) error
 		server.WithHooks(hooks),
 	)
 
-	// Register all tools
 	zap.S().Debugw("registering PostgreSQL tools")
 	if err := RegisterAllTools(mcpServer, cfg); err != nil {
 		zap.S().Errorw("failed to register tools", "error", err)
+		return nil, err
+	}
+
+	return mcpServer, nil
+}
+
+// Run executes the MCP server with stdio transport
+func Run(cfg *config.Config, name string, version string, revision string) error {
+	zap.S().Infow("starting MCP PostgreSQL Server")
+
+	mcpServer, err := NewMCPServer(cfg, name, version, revision)
+	if err != nil {
 		return err
 	}
 
-	// Start the server with stdio transport
-	zap.S().Infow("starting MCP server")
-	err := server.ServeStdio(mcpServer)
-	if err != nil {
+	zap.S().Infow("starting MCP server with stdio transport")
+	if err := server.ServeStdio(mcpServer); err != nil {
 		zap.S().Errorw("failed to start server", "error", err)
 		return errors.Wrap(err, "failed to start server")
 	}
 
-	// ServeStdio will block until the server is terminated
 	zap.S().Infow("server shutting down")
 	return nil
 }

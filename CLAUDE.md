@@ -3,7 +3,7 @@
 ## Project Overview
 
 MCP (Model Context Protocol) server implementation for PostgreSQL.
-Provides database access tools (schema inspection, CRUD queries) via stdio transport.
+Provides database access tools (schema inspection, CRUD queries) via stdio and Streamable HTTP transports.
 
 ## Tech Stack
 
@@ -19,12 +19,14 @@ Provides database access tools (schema inspection, CRUD queries) via stdio trans
 ## Project Structure
 
 ```
-main.go           # CLI entrypoint (urfave/cli)
+main.go           # CLI entrypoint (urfave/cli) - server/http subcommands
 config/
   config.go       # Config struct (YAML + env vars)
 config.yml        # Default config file
 server/
-  server.go       # DBManager, MCP server setup, DB connection pooling
+  server.go       # DBManager, NewMCPServer(), DB connection pooling
+  http.go         # RunHTTP() - Streamable HTTP transport
+  middleware.go   # Bearer token auth + Origin validation middleware
   tools.go        # MCP tool definitions, handlers, SQL validation
   *_test.go       # Unit tests (no DB required)
 logger/
@@ -45,13 +47,18 @@ go test -v ./...              # Run all tests (no DB dependency)
 # Lint
 golangci-lint run             # Static analysis
 
-# Run
+# Run (stdio transport)
 bin/mcp-postgresql server -c config.yml
+
+# Run (Streamable HTTP transport)
+bin/mcp-postgresql http -c config.yml
 ```
 
 ## Architecture Notes
 
+- **Dual transport**: Supports both stdio (`server` subcommand) and Streamable HTTP (`http` subcommand) transports.
 - **stdio transport**: MCP communication uses stdin/stdout. Logger output MUST go to a file (not stdout/stderr) to avoid corrupting the MCP protocol.
+- **HTTP transport**: Uses mcp-go `NewStreamableHTTPServer()` with custom `http.ServeMux` for routing. Includes Origin validation (MCP spec MUST) and optional Bearer token authentication with `crypto/subtle.ConstantTimeCompare`. Health check at `/health` (no auth).
 - **Read-only mode**: When `read_only: true`, write tools (create_table, alter_table, write_query, update_query, delete_query) are not registered, and DB sessions are set to read-only.
 - **DSN resolution**: Supports both key=value (`host=localhost port=5432 ...`) and URL format (`postgres://user:pass@host/db`). Tool-level DSN parameter overrides config.
 - **Connection pooling**: `DBManager` uses double-checked locking pattern for thread-safe lazy connection creation, keyed by DSN string.
@@ -76,6 +83,11 @@ Config is loaded from YAML file with env var overrides:
 | `postgresql.dsn`          | `POSTGRES_DSN`          | `""`        |
 | `postgresql.read_only`    | `POSTGRES_READ_ONLY`    | `false`     |
 | `postgresql.query_timeout`| `POSTGRES_QUERY_TIMEOUT` | `30`       |
+| `http.host`               | `HTTP_HOST`              | `127.0.0.1`|
+| `http.port`               | `HTTP_PORT`              | `8080`     |
+| `http.endpoint`           | `HTTP_ENDPOINT`          | `/mcp`     |
+| `http.auth_token`         | `HTTP_AUTH_TOKEN`        | `""`       |
+| `http.allowed_origins`    | `HTTP_ALLOWED_ORIGINS`   | `[]`       |
 
 ## MCP Tools Provided
 
