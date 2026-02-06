@@ -12,3 +12,18 @@ postgresql:
   dsn: ''
   read_only: false
   query_timeout: 30
+
+# presets:
+#   production:
+#     host: 'prod-db.example.com'
+#     user: 'app_user'
+#     password: 'prod_password'
+#     port: 5432
+#     database: 'production_db'
+#     schema: 'public'
+#     sslmode: 'require'
+#     read_only: true
+#     query_timeout: 60
+#   staging:
+#     dsn: 'postgres://staging_user:pass@staging-db:5432/staging_db?sslmode=require'
+#     read_only: false

@@ -13,6 +13,7 @@ A Model Context Protocol (MCP) server implementation for PostgreSQL.
 - Read-only mode for safe operation
 - Connection via DSN or individual parameters
 - URL-style DSN support (`postgres://`, `postgresql://`)
+- Connection presets for secure multi-database access (LLM never sees passwords)
 
 ## Installation
 
@@ -48,7 +49,31 @@ postgresql:
   sslmode: 'disable'      # disable, allow, prefer, require, verify-ca, verify-full
   dsn: ''                 # Direct DSN (overrides above settings)
   read_only: false        # Enable read-only mode (disables write tools)
+
+presets:
+  production:
+    host: 'prod-db.example.com'
+    user: 'app_user'
+    password: 'prod_password'
+    port: 5432
+    database: 'production_db'
+    sslmode: 'require'
+    read_only: true
+  staging:
+    dsn: 'postgres://staging_user:pass@staging-db:5432/staging_db'
+    read_only: false
 ```
+
+### Connection Presets
+
+Presets allow managing multiple database connections without exposing passwords to the LLM. Each preset defines a named connection profile in the config file.
+
+Preset fields: `host`, `port`, `user`, `password`, `database`, `schema`, `sslmode`, `dsn`, `read_only`, `query_timeout`
+
+- When `dsn` is set in a preset, it takes priority over individual fields
+- `query_timeout: 0` falls back to the global `postgresql.query_timeout` value
+- `read_only: true` presets block all write operations at runtime
+- Passwords are never exposed through the `list_preset` tool
 
 ### Environment Variables
 
@@ -146,6 +171,7 @@ Or with Docker:
 
 | Tool | Description | Read-Only Mode |
 |------|-------------|----------------|
+| `list_preset` | List configured connection presets | Available |
 | `list_database` | List all databases | Available |
 | `list_schema` | List all schemas (excluding system schemas) | Available |
 | `list_table` | List tables in a schema | Available |
@@ -164,14 +190,26 @@ Or with Docker:
 
 ### Tool Parameters
 
-All tools support an optional `dsn` parameter to override the configured connection:
+All tools support optional `dsn` and `preset` parameters to override the configured connection. These two parameters cannot be used together.
 
+**Using DSN:**
 ```json
 {
   "name": "list_table",
   "arguments": {
     "schema": "my_schema",
     "dsn": "postgres://user:pass@host:5432/db"
+  }
+}
+```
+
+**Using Preset:**
+```json
+{
+  "name": "read_query",
+  "arguments": {
+    "preset": "production",
+    "query": "SELECT * FROM users LIMIT 10"
   }
 }
 ```
