@@ -90,6 +90,13 @@ func Run(cfg *config.Config, name string, version string, revision string) error
 	return nil
 }
 
+// connectionParams holds resolved connection parameters
+type connectionParams struct {
+	dsn          string
+	readOnly     bool
+	queryTimeout int
+}
+
 // SetReadOnly sets the read-only mode for the DBManager
 func (m *DBManager) SetReadOnly(readOnly bool) {
 	m.mu.Lock()
@@ -99,16 +106,25 @@ func (m *DBManager) SetReadOnly(readOnly bool) {
 
 // GetDB returns a database connection for the given DSN with thread safety
 func (m *DBManager) GetDB(ctx context.Context, cfg *config.Config, toolDSN string) (*sqlx.DB, error) {
-	dsn, err := m.resolveDSN(cfg, toolDSN)
+	db, _, err := m.GetDBWithPreset(ctx, cfg, toolDSN, "")
+	return db, err
+}
+
+// GetDBWithPreset returns a database connection resolved from DSN or preset
+func (m *DBManager) GetDBWithPreset(ctx context.Context, cfg *config.Config, toolDSN, toolPreset string) (*sqlx.DB, *connectionParams, error) {
+	params, err := m.resolveConnectionParams(cfg, toolDSN, toolPreset)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	// queryTimeout is intentionally excluded: it's applied per-query via context, not per-connection.
+	cacheKey := fmt.Sprintf("%s|ro=%t", params.dsn, params.readOnly)
 
 	// Fast path: check if connection already exists
 	m.mu.RLock()
-	if db, ok := m.connections[dsn]; ok {
+	if db, ok := m.connections[cacheKey]; ok {
 		m.mu.RUnlock()
-		return db, nil
+		return db, params, nil
 	}
 	m.mu.RUnlock()
 
@@ -117,17 +133,104 @@ func (m *DBManager) GetDB(ctx context.Context, cfg *config.Config, toolDSN strin
 	defer m.mu.Unlock()
 
 	// Double-check after acquiring write lock
-	if db, ok := m.connections[dsn]; ok {
-		return db, nil
+	if db, ok := m.connections[cacheKey]; ok {
+		return db, params, nil
 	}
 
-	db, err := m.createConnection(ctx, cfg, dsn)
+	db, err := m.createConnectionWithReadOnly(ctx, params.dsn, params.readOnly)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	m.connections[cacheKey] = db
+	return db, params, nil
+}
+
+// resolveConnectionParams resolves DSN and metadata from tool parameters
+func (m *DBManager) resolveConnectionParams(cfg *config.Config, toolDSN, toolPreset string) (*connectionParams, error) {
+	if toolDSN != "" && toolPreset != "" {
+		return nil, fmt.Errorf("cannot specify both 'dsn' and 'preset' parameters")
+	}
+
+	if toolPreset != "" {
+		preset, ok := cfg.Presets[toolPreset]
+		if !ok {
+			return nil, fmt.Errorf("preset '%s' not found in configuration", toolPreset)
+		}
+
+		dsn, err := m.buildPresetDSN(&preset)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to resolve preset '%s'", toolPreset)
+		}
+
+		queryTimeout := preset.QueryTimeout
+		if queryTimeout <= 0 {
+			queryTimeout = cfg.PostgreSQL.QueryTimeout
+		}
+
+		return &connectionParams{
+			dsn:          dsn,
+			readOnly:     preset.ReadOnly,
+			queryTimeout: queryTimeout,
+		}, nil
+	}
+
+	// Fall back to existing DSN resolution
+	dsn, err := m.resolveDSN(cfg, toolDSN)
 	if err != nil {
 		return nil, err
 	}
 
-	m.connections[dsn] = db
-	return db, nil
+	return &connectionParams{
+		dsn:          dsn,
+		readOnly:     cfg.PostgreSQL.ReadOnly,
+		queryTimeout: cfg.PostgreSQL.QueryTimeout,
+	}, nil
+}
+
+// buildPresetDSN builds a DSN string from preset configuration
+func (m *DBManager) buildPresetDSN(preset *config.PresetConfig) (string, error) {
+	dsn := preset.DSN
+	if dsn == "" {
+		if preset.Host == "" || preset.User == "" {
+			return "", fmt.Errorf("preset requires either 'dsn' or both 'host' and 'user'")
+		}
+
+		dbname := preset.Database
+		if dbname == "" {
+			dbname = "postgres"
+		}
+
+		port := preset.Port
+		if port == 0 {
+			port = 5432
+		}
+
+		sslmode := preset.SSLMode
+		if sslmode == "" {
+			sslmode = "disable"
+		}
+
+		dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+			preset.Host, port, preset.User, preset.Password, dbname, sslmode)
+
+		schema := preset.Schema
+		if schema == "" {
+			schema = "public"
+		}
+		dsn += fmt.Sprintf(" search_path=%s", schema)
+	}
+
+	if isURLStyle(dsn) {
+		u, err := dburl.Parse(dsn)
+		if err != nil {
+			return "", fmt.Errorf("failed to parse preset database URL: %v", err)
+		}
+		dsn = u.DSN
+		zap.S().Debugw("converted preset URL-style DSN to native PostgreSQL DSN", "dsn", sanitizeDSNForLog(dsn))
+	}
+
+	return dsn, nil
 }
 
 // resolveDSN determines the DSN to use based on config and tool parameter
@@ -171,8 +274,8 @@ func (m *DBManager) resolveDSN(cfg *config.Config, toolDSN string) (string, erro
 	return dsn, nil
 }
 
-// createConnection creates a new database connection with proper configuration
-func (m *DBManager) createConnection(ctx context.Context, cfg *config.Config, dsn string) (*sqlx.DB, error) {
+// createConnectionWithReadOnly creates a new database connection with the specified read-only mode
+func (m *DBManager) createConnectionWithReadOnly(ctx context.Context, dsn string, readOnly bool) (*sqlx.DB, error) {
 	db, err := sqlx.ConnectContext(ctx, "pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish database connection: %v", err)
@@ -184,9 +287,9 @@ func (m *DBManager) createConnection(ctx context.Context, cfg *config.Config, ds
 	db.SetConnMaxLifetime(time.Hour)
 
 	// Set session to read-only if configured
-	if m.readOnly {
+	if readOnly {
 		if _, err := db.ExecContext(ctx, "SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY"); err != nil {
-			db.Close()
+			_ = db.Close()
 			return nil, fmt.Errorf("failed to set read-only mode: %v", err)
 		}
 		zap.S().Debugw("set session to read-only mode")

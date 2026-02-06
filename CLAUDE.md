@@ -60,8 +60,9 @@ bin/mcp-postgresql http -c config.yml
 - **stdio transport**: MCP communication uses stdin/stdout. Logger output MUST go to a file (not stdout/stderr) to avoid corrupting the MCP protocol.
 - **HTTP transport**: Uses mcp-go `NewStreamableHTTPServer()` with custom `http.ServeMux` for routing. Includes Origin validation (MCP spec MUST) and optional Bearer token authentication with `crypto/subtle.ConstantTimeCompare`. Health check at `/health` (no auth).
 - **Read-only mode**: When `read_only: true`, write tools (create_table, alter_table, write_query, update_query, delete_query) are not registered, and DB sessions are set to read-only.
-- **DSN resolution**: Supports both key=value (`host=localhost port=5432 ...`) and URL format (`postgres://user:pass@host/db`). Tool-level DSN parameter overrides config.
-- **Connection pooling**: `DBManager` uses double-checked locking pattern for thread-safe lazy connection creation, keyed by DSN string.
+- **DSN resolution**: Priority: Tool DSN param > Tool preset param > cfg.PostgreSQL.DSN > individual fields. Supports both key=value (`host=localhost port=5432 ...`) and URL format (`postgres://user:pass@host/db`).
+- **Connection presets**: `presets` map in config defines named connection profiles. Preset DSN resolution: preset DSN field > build from preset fields. Cache key includes read-only flag to avoid mixing connections.
+- **Connection pooling**: `DBManager` uses double-checked locking pattern for thread-safe lazy connection creation, keyed by DSN string + read-only flag.
 - **SQL validation**: `validateReadOnlyQuery` (allowlist approach for SELECT) and `validateWriteQuery` (statement type verification + dangerous operation blocking) protect against injection.
 - **Query results**: Returned as CSV format via `MapToCSV`.
 
@@ -88,11 +89,13 @@ Config is loaded from YAML file with env var overrides:
 | `http.endpoint`           | `HTTP_ENDPOINT`          | `/mcp`     |
 | `http.auth_token`         | `HTTP_AUTH_TOKEN`        | `""`       |
 | `http.allowed_origins`    | `HTTP_ALLOWED_ORIGINS`   | `[]`       |
+| `presets.<name>.*`        | (YAML only)              | -           |
 
 ## MCP Tools Provided
 
 | Tool            | Description                        | Write? |
 |-----------------|------------------------------------|--------|
+| `list_preset`   | List connection presets (no passwords) | No  |
 | `list_database` | List all databases                 | No     |
 | `list_schema`   | List user schemas                  | No     |
 | `list_table`    | List tables in a schema            | No     |

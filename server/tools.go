@@ -4,22 +4,33 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/cnosuke/mcp-postgresql/config"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/xo/dburl"
 )
 
 // RegisterAllTools - Register all tools with the server
 func RegisterAllTools(mcpServer *server.MCPServer, cfg *config.Config) error {
+	// Preset Tool (always registered)
+	listPresetTool := mcp.NewTool(
+		"list_preset",
+		mcp.WithDescription("List configured connection presets (passwords are never exposed)"),
+	)
+
 	// Schema Tools
 	listDatabaseTool := mcp.NewTool(
 		"list_database",
 		mcp.WithDescription("List all databases in the PostgreSQL server"),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
@@ -27,7 +38,10 @@ func RegisterAllTools(mcpServer *server.MCPServer, cfg *config.Config) error {
 		"list_schema",
 		mcp.WithDescription("List all schemas in the current PostgreSQL database (excluding system schemas)"),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
@@ -38,7 +52,10 @@ func RegisterAllTools(mcpServer *server.MCPServer, cfg *config.Config) error {
 			mcp.Description("Schema name to list tables from (default: public)"),
 		),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
@@ -53,7 +70,10 @@ func RegisterAllTools(mcpServer *server.MCPServer, cfg *config.Config) error {
 			mcp.Description("Schema name where the table is located (default: public)"),
 		),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
@@ -68,7 +88,10 @@ Note: PostgreSQL uses separate COMMENT ON statements for comments:
 			mcp.Description("The SQL query to create the table"),
 		),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
@@ -81,7 +104,10 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 			mcp.Description("The SQL query to alter the table"),
 		),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
@@ -94,7 +120,10 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 			mcp.Description("The SQL query to execute (SELECT statements only)"),
 		),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
@@ -106,7 +135,10 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 			mcp.Description("The SQL query to execute (INSERT statement, optionally with RETURNING clause)"),
 		),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
@@ -118,7 +150,10 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 			mcp.Description("The SQL query to execute (UPDATE statement, optionally with RETURNING clause)"),
 		),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
@@ -130,14 +165,26 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 			mcp.Description("The SQL query to execute (DELETE statement, optionally with RETURNING clause)"),
 		),
 		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration."),
+			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
+		),
+		mcp.WithString("preset",
+			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
 		),
 	)
 
-	// Register handlers for each tool
+	// Register handlers
+	mcpServer.AddTool(listPresetTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		result, err := handleListPreset(cfg)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(result), nil
+	})
+
 	mcpServer.AddTool(listDatabaseTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		dsn := request.GetString("dsn", "")
-		result, err := handleListDatabase(ctx, cfg, dsn)
+		preset := request.GetString("preset", "")
+		result, err := handleListDatabase(ctx, cfg, dsn, preset)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -146,7 +193,8 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 
 	mcpServer.AddTool(listSchemaTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		dsn := request.GetString("dsn", "")
-		result, err := handleListSchema(ctx, cfg, dsn)
+		preset := request.GetString("preset", "")
+		result, err := handleListSchema(ctx, cfg, dsn, preset)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -156,7 +204,8 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 	mcpServer.AddTool(listTableTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		schema := request.GetString("schema", "")
 		dsn := request.GetString("dsn", "")
-		result, err := handleListTable(ctx, cfg, schema, dsn)
+		preset := request.GetString("preset", "")
+		result, err := handleListTable(ctx, cfg, schema, dsn, preset)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -170,7 +219,8 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 		}
 		schema := request.GetString("schema", "")
 		dsn := request.GetString("dsn", "")
-		result, err := handleDescTable(ctx, cfg, name, schema, dsn)
+		preset := request.GetString("preset", "")
+		result, err := handleDescTable(ctx, cfg, name, schema, dsn, preset)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -184,7 +234,8 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			dsn := request.GetString("dsn", "")
-			result, err := HandleExecContext(ctx, cfg, query, dsn)
+			preset := request.GetString("preset", "")
+			result, err := handleExecWithPreset(ctx, cfg, query, dsn, preset)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -199,7 +250,8 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			dsn := request.GetString("dsn", "")
-			result, err := HandleExecContext(ctx, cfg, query, dsn)
+			preset := request.GetString("preset", "")
+			result, err := handleExecWithPreset(ctx, cfg, query, dsn, preset)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -213,7 +265,8 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		dsn := request.GetString("dsn", "")
-		result, err := handleReadQuery(ctx, cfg, query, dsn)
+		preset := request.GetString("preset", "")
+		result, err := handleReadQuery(ctx, cfg, query, dsn, preset)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -227,7 +280,8 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			dsn := request.GetString("dsn", "")
-			result, err := handleWriteQuery(ctx, cfg, query, "INSERT", dsn)
+			preset := request.GetString("preset", "")
+			result, err := handleWriteQuery(ctx, cfg, query, "INSERT", dsn, preset)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -242,7 +296,8 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			dsn := request.GetString("dsn", "")
-			result, err := handleWriteQuery(ctx, cfg, query, "UPDATE", dsn)
+			preset := request.GetString("preset", "")
+			result, err := handleWriteQuery(ctx, cfg, query, "UPDATE", dsn, preset)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -257,7 +312,8 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			dsn := request.GetString("dsn", "")
-			result, err := handleWriteQuery(ctx, cfg, query, "DELETE", dsn)
+			preset := request.GetString("preset", "")
+			result, err := handleWriteQuery(ctx, cfg, query, "DELETE", dsn, preset)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -268,29 +324,101 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 	return nil
 }
 
+// handleListPreset returns a CSV listing of configured presets (no passwords)
+func handleListPreset(cfg *config.Config) (string, error) {
+	headers := []string{"preset_name", "host", "user", "database", "read_only"}
+
+	if len(cfg.Presets) == 0 {
+		return MapToCSV([]map[string]interface{}{}, headers)
+	}
+
+	names := make([]string, 0, len(cfg.Presets))
+	for name := range cfg.Presets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	rows := make([]map[string]interface{}, 0, len(names))
+	for _, name := range names {
+		preset := cfg.Presets[name]
+		host := preset.Host
+		user := preset.User
+		database := preset.Database
+
+		// Best-effort extraction from DSN if fields are empty
+		if preset.DSN != "" && (host == "" || database == "") {
+			h, d := extractHostDatabaseFromDSN(preset.DSN)
+			if host == "" {
+				host = h
+			}
+			if database == "" {
+				database = d
+			}
+		}
+
+		rows = append(rows, map[string]interface{}{
+			"preset_name": name,
+			"host":        host,
+			"user":        user,
+			"database":    database,
+			"read_only":   preset.ReadOnly,
+		})
+	}
+
+	return MapToCSV(rows, headers)
+}
+
+// extractHostDatabaseFromDSN extracts host and database from a DSN (best-effort)
+func extractHostDatabaseFromDSN(dsn string) (host, database string) {
+	if isURLStyle(dsn) {
+		u, err := dburl.Parse(dsn)
+		if err != nil {
+			return "", ""
+		}
+		host = u.Hostname()
+		database = strings.TrimPrefix(u.Path, "/")
+		return host, database
+	}
+
+	// key=value format
+	for _, part := range strings.Fields(dsn) {
+		kv := strings.SplitN(part, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		switch kv[0] {
+		case "host":
+			host = kv[1]
+		case "dbname":
+			database = kv[1]
+		}
+	}
+	return host, database
+}
+
 // handleListDatabase lists all databases in PostgreSQL
-func handleListDatabase(ctx context.Context, cfg *config.Config, toolDSN string) (string, error) {
+func handleListDatabase(ctx context.Context, cfg *config.Config, toolDSN, toolPreset string) (string, error) {
 	query := "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
-	return HandleQueryContext(ctx, cfg, query, toolDSN)
+	return handleQueryWithPreset(ctx, cfg, query, toolDSN, toolPreset)
 }
 
 // handleListSchema lists all user schemas (excluding system schemas)
-func handleListSchema(ctx context.Context, cfg *config.Config, toolDSN string) (string, error) {
+func handleListSchema(ctx context.Context, cfg *config.Config, toolDSN, toolPreset string) (string, error) {
 	query := `SELECT schema_name FROM information_schema.schemata
 WHERE schema_name NOT LIKE 'pg_%' AND schema_name != 'information_schema'
 ORDER BY schema_name`
-	return HandleQueryContext(ctx, cfg, query, toolDSN)
+	return handleQueryWithPreset(ctx, cfg, query, toolDSN, toolPreset)
 }
 
 // handleListTable lists all tables in the specified schema
-func handleListTable(ctx context.Context, cfg *config.Config, schema, toolDSN string) (string, error) {
-	queryCtx, cancel := contextWithTimeout(ctx, cfg)
-	defer cancel()
-
-	db, err := GetDBContext(queryCtx, cfg, toolDSN)
+func handleListTable(ctx context.Context, cfg *config.Config, schema, toolDSN, toolPreset string) (string, error) {
+	db, params, err := dbManager.GetDBWithPreset(ctx, cfg, toolDSN, toolPreset)
 	if err != nil {
 		return "", err
 	}
+
+	queryCtx, cancel := contextWithTimeoutFromParams(ctx, cfg, params)
+	defer cancel()
 
 	if schema == "" {
 		schema = "public"
@@ -301,7 +429,7 @@ func handleListTable(ctx context.Context, cfg *config.Config, schema, toolDSN st
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := []map[string]interface{}{}
 	for rows.Next() {
@@ -320,14 +448,14 @@ func handleListTable(ctx context.Context, cfg *config.Config, schema, toolDSN st
 }
 
 // handleDescTable describes a table structure
-func handleDescTable(ctx context.Context, cfg *config.Config, name, schema, toolDSN string) (string, error) {
-	queryCtx, cancel := contextWithTimeout(ctx, cfg)
-	defer cancel()
-
-	db, err := GetDBContext(queryCtx, cfg, toolDSN)
+func handleDescTable(ctx context.Context, cfg *config.Config, name, schema, toolDSN, toolPreset string) (string, error) {
+	db, params, err := dbManager.GetDBWithPreset(ctx, cfg, toolDSN, toolPreset)
 	if err != nil {
 		return "", err
 	}
+
+	queryCtx, cancel := contextWithTimeoutFromParams(ctx, cfg, params)
+	defer cancel()
 
 	if schema == "" {
 		schema = "public"
@@ -367,7 +495,7 @@ ORDER BY c.ordinal_position`
 		var columnDefault, columnComment *string
 
 		if err := rows.Scan(&columnName, &dataType, &charMaxLen, &numPrecision, &numScale, &isNullable, &columnDefault, &columnComment); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return "", err
 		}
 
@@ -394,10 +522,10 @@ ORDER BY c.ordinal_position`
 	}
 
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return "", err
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	if columnCount == 0 {
 		return "", fmt.Errorf("table %s.%s does not exist", schema, name)
@@ -426,7 +554,7 @@ ORDER BY tc.constraint_type, tc.constraint_name`
 	for rows.Next() {
 		var constraintName, constraintType, columns string
 		if err := rows.Scan(&constraintName, &constraintType, &columns); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return "", err
 		}
 		constraintCount++
@@ -434,10 +562,10 @@ ORDER BY tc.constraint_type, tc.constraint_name`
 	}
 
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return "", err
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	if constraintCount == 0 {
 		result.WriteString("  (none)\n")
@@ -459,7 +587,7 @@ ORDER BY indexname`
 	for rows.Next() {
 		var indexName, indexDef string
 		if err := rows.Scan(&indexName, &indexDef); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return "", err
 		}
 		indexCount++
@@ -467,10 +595,10 @@ ORDER BY indexname`
 	}
 
 	if err := rows.Err(); err != nil {
-		rows.Close()
+		_ = rows.Close()
 		return "", err
 	}
-	rows.Close()
+	_ = rows.Close()
 
 	if indexCount == 0 {
 		result.WriteString("  (none)\n")
@@ -579,24 +707,110 @@ func validateWriteQuery(query, expectedType string) error {
 }
 
 // handleReadQuery executes a read-only query after validation
-func handleReadQuery(ctx context.Context, cfg *config.Config, query, toolDSN string) (string, error) {
+func handleReadQuery(ctx context.Context, cfg *config.Config, query, toolDSN, toolPreset string) (string, error) {
 	if err := validateReadOnlyQuery(query); err != nil {
 		return "", err
 	}
-	return HandleQueryContext(ctx, cfg, query, toolDSN)
+	return handleQueryWithPreset(ctx, cfg, query, toolDSN, toolPreset)
 }
 
 // handleWriteQuery executes a write query with RETURNING support
-func handleWriteQuery(ctx context.Context, cfg *config.Config, query, expectedType, toolDSN string) (string, error) {
+func handleWriteQuery(ctx context.Context, cfg *config.Config, query, expectedType, toolDSN, toolPreset string) (string, error) {
+	// Early return for read-only preset before SQL validation.
+	// handleExecWithPreset also checks this for create_table/alter_table which bypass this function.
+	if toolPreset != "" {
+		if preset, ok := cfg.Presets[toolPreset]; ok && preset.ReadOnly {
+			return "", fmt.Errorf("cannot execute write operation: preset '%s' is read-only", toolPreset)
+		}
+	}
+
 	if err := validateWriteQuery(query, expectedType); err != nil {
 		return "", err
 	}
 
 	if strings.Contains(strings.ToUpper(query), "RETURNING") {
-		return HandleQueryContext(ctx, cfg, query, toolDSN)
+		return handleQueryWithPreset(ctx, cfg, query, toolDSN, toolPreset)
 	}
 
-	return HandleExecContext(ctx, cfg, query, toolDSN)
+	return handleExecWithPreset(ctx, cfg, query, toolDSN, toolPreset)
+}
+
+// handleQueryWithPreset executes a read query using preset-aware connection
+func handleQueryWithPreset(ctx context.Context, cfg *config.Config, query, toolDSN, toolPreset string) (string, error) {
+	db, params, err := dbManager.GetDBWithPreset(ctx, cfg, toolDSN, toolPreset)
+	if err != nil {
+		return "", err
+	}
+
+	queryCtx, cancel := contextWithTimeoutFromParams(ctx, cfg, params)
+	defer cancel()
+
+	rows, err := db.QueryxContext(queryCtx, query)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = rows.Close() }()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return "", err
+	}
+
+	result := []map[string]interface{}{}
+	for rows.Next() {
+		row, err := rows.SliceScan()
+		if err != nil {
+			return "", err
+		}
+
+		resultRow := map[string]interface{}{}
+		for i, col := range cols {
+			switch v := row[i].(type) {
+			case []byte:
+				resultRow[col] = string(v)
+			default:
+				resultRow[col] = v
+			}
+		}
+		result = append(result, resultRow)
+	}
+
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+
+	return MapToCSV(result, cols)
+}
+
+// handleExecWithPreset executes a write query using preset-aware connection
+func handleExecWithPreset(ctx context.Context, cfg *config.Config, query, toolDSN, toolPreset string) (string, error) {
+	// Guard for create_table/alter_table which call this directly (not via handleWriteQuery).
+	// Intentionally duplicated with handleWriteQuery for defense-in-depth.
+	if toolPreset != "" {
+		if preset, ok := cfg.Presets[toolPreset]; ok && preset.ReadOnly {
+			return "", fmt.Errorf("cannot execute write operation: preset '%s' is read-only", toolPreset)
+		}
+	}
+
+	db, params, err := dbManager.GetDBWithPreset(ctx, cfg, toolDSN, toolPreset)
+	if err != nil {
+		return "", err
+	}
+
+	queryCtx, cancel := contextWithTimeoutFromParams(ctx, cfg, params)
+	defer cancel()
+
+	result, err := db.ExecContext(queryCtx, query)
+	if err != nil {
+		return "", err
+	}
+
+	ra, err := result.RowsAffected()
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%d rows affected", ra), nil
 }
 
 // contextWithTimeout creates a context with the configured query timeout
@@ -608,19 +822,21 @@ func contextWithTimeout(ctx context.Context, cfg *config.Config) (context.Contex
 	return context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 }
 
+// contextWithTimeoutFromParams creates a context using connectionParams timeout
+func contextWithTimeoutFromParams(ctx context.Context, cfg *config.Config, params *connectionParams) (context.Context, context.CancelFunc) {
+	timeout := params.queryTimeout
+	if timeout <= 0 {
+		timeout = cfg.PostgreSQL.QueryTimeout
+	}
+	if timeout <= 0 {
+		timeout = 30
+	}
+	return context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+}
+
 // HandleQueryContext executes a read query with context and returns the result as CSV
 func HandleQueryContext(ctx context.Context, cfg *config.Config, query, toolDSN string) (string, error) {
-	result, headers, err := DoQueryContext(ctx, cfg, query, toolDSN)
-	if err != nil {
-		return "", err
-	}
-
-	s, err := MapToCSV(result, headers)
-	if err != nil {
-		return "", err
-	}
-
-	return s, nil
+	return handleQueryWithPreset(ctx, cfg, query, toolDSN, "")
 }
 
 // HandleQuery executes a read query and returns the result as CSV (legacy wrapper)
@@ -642,7 +858,7 @@ func DoQueryContext(ctx context.Context, cfg *config.Config, query, toolDSN stri
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	cols, err := rows.Columns()
 	if err != nil {
@@ -682,25 +898,7 @@ func DoQuery(cfg *config.Config, query, toolDSN string) ([]map[string]interface{
 
 // HandleExecContext executes a write query with context and returns the result summary
 func HandleExecContext(ctx context.Context, cfg *config.Config, query, toolDSN string) (string, error) {
-	queryCtx, cancel := contextWithTimeout(ctx, cfg)
-	defer cancel()
-
-	db, err := GetDBContext(queryCtx, cfg, toolDSN)
-	if err != nil {
-		return "", err
-	}
-
-	result, err := db.ExecContext(queryCtx, query)
-	if err != nil {
-		return "", err
-	}
-
-	ra, err := result.RowsAffected()
-	if err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf("%d rows affected", ra), nil
+	return handleExecWithPreset(ctx, cfg, query, toolDSN, "")
 }
 
 // HandleExec executes a write query and returns the result summary (legacy wrapper)
