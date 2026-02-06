@@ -14,6 +14,8 @@ A Model Context Protocol (MCP) server implementation for PostgreSQL.
 - Connection via DSN or individual parameters
 - URL-style DSN support (`postgres://`, `postgresql://`)
 - Connection presets for secure multi-database access (LLM never sees passwords)
+- **Dual transport**: stdio and Streamable HTTP (MCP spec 2025-11-25)
+- Bearer token authentication and Origin validation for HTTP transport
 
 ## Installation
 
@@ -49,6 +51,13 @@ postgresql:
   sslmode: 'disable'      # disable, allow, prefer, require, verify-ca, verify-full
   dsn: ''                 # Direct DSN (overrides above settings)
   read_only: false        # Enable read-only mode (disables write tools)
+
+http:
+  host: '127.0.0.1'        # Bind address (default: 127.0.0.1)
+  port: 8080               # Listen port (default: 8080)
+  endpoint: '/mcp'          # MCP endpoint path (default: /mcp)
+  auth_token: ''            # Bearer token for authentication (empty = no auth)
+  allowed_origins: []       # Allowed Origin headers (empty = allow all)
 
 presets:
   production:
@@ -92,6 +101,11 @@ All configuration options can be overridden via environment variables:
 | `POSTGRES_SSLMODE` | SSL mode | disable |
 | `POSTGRES_DSN` | Direct DSN connection string | (empty) |
 | `POSTGRES_READ_ONLY` | Read-only mode | false |
+| `HTTP_HOST` | HTTP server bind address | 127.0.0.1 |
+| `HTTP_PORT` | HTTP server port | 8080 |
+| `HTTP_ENDPOINT` | MCP endpoint path | /mcp |
+| `HTTP_AUTH_TOKEN` | Bearer token for authentication | (empty) |
+| `HTTP_ALLOWED_ORIGINS` | Allowed Origin headers | (empty) |
 
 ### DSN Formats
 
@@ -110,7 +124,7 @@ postgresql://postgres:secret@localhost:5432/mydb?sslmode=disable
 
 ## Usage
 
-### Running the Server
+### Stdio Transport (default)
 
 ```bash
 # With default config
@@ -120,17 +134,43 @@ postgresql://postgres:secret@localhost:5432/mydb?sslmode=disable
 ./bin/mcp-postgresql server --config=/path/to/config.yml
 ```
 
+### Streamable HTTP Transport
+
+```bash
+# Start HTTP server
+./bin/mcp-postgresql http --config=/path/to/config.yml
+# → http://127.0.0.1:8080/mcp
+# → http://127.0.0.1:8080/health (no auth required)
+```
+
+The HTTP transport supports:
+- **Origin validation** (MCP spec MUST requirement, DNS rebinding prevention)
+- **Bearer token authentication** (timing-safe comparison)
+- **Health check endpoint** at `/health` (no authentication required)
+
 ### Docker
 
 ```bash
+# Stdio transport
 docker run -e POSTGRES_HOST=host.docker.internal \
            -e POSTGRES_USER=postgres \
            -e POSTGRES_PASSWORD=secret \
            -e POSTGRES_DATABASE=mydb \
            cnosuke/mcp-postgresql
+
+# HTTP transport
+docker run -p 8080:8080 \
+           -e POSTGRES_HOST=host.docker.internal \
+           -e POSTGRES_USER=postgres \
+           -e POSTGRES_PASSWORD=secret \
+           -e POSTGRES_DATABASE=mydb \
+           -e HTTP_AUTH_TOKEN=your-secret-token \
+           cnosuke/mcp-postgresql http
 ```
 
-### Claude Desktop Configuration
+### Client Configuration
+
+#### Claude Desktop (stdio)
 
 Add to your `claude_desktop_config.json`:
 
@@ -163,6 +203,17 @@ Or with Docker:
     }
   }
 }
+```
+
+#### Claude Code (HTTP)
+
+```bash
+# Without authentication
+claude mcp add mcp-postgresql --transport http http://localhost:8080/mcp
+
+# With Bearer token authentication
+claude mcp add mcp-postgresql --transport http http://localhost:8080/mcp \
+  -H "Authorization: Bearer <token>"
 ```
 
 ## Available Tools
