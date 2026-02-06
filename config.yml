@@ -13,6 +13,13 @@ postgresql:
   read_only: false
   query_timeout: 30
 
+http:
+  host: '127.0.0.1'
+  port: 8080
+  endpoint: '/mcp'
+  auth_token: ''
+  allowed_origins: []
+
 # presets:
 #   production:
 #     host: 'prod-db.example.com'
