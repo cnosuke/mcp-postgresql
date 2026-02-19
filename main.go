@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -8,7 +9,7 @@ import (
 	"github.com/cnosuke/mcp-postgresql/logger"
 	"github.com/cnosuke/mcp-postgresql/server"
 	"github.com/cockroachdb/errors"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -22,82 +23,82 @@ var (
 )
 
 func main() {
-	app := cli.NewApp()
-	app.Version = fmt.Sprintf("%s (%s)", Version, Revision)
-	app.Name = Name
-	app.Usage = Usage
+	app := &cli.Command{
+		Name:    Name,
+		Usage:   Usage,
+		Version: fmt.Sprintf("%s (%s)", Version, Revision),
+		Commands: []*cli.Command{
+			{
+				Name:    "server",
+				Aliases: []string{"s"},
+				Usage:   "Run the MCP PostgreSQL server (stdio transport)",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "config",
+						Aliases: []string{"c"},
+						Value:   "config.yml",
+						Usage:   "path to the configuration file",
+					},
+				},
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					configPath := cmd.String("config")
 
-	app.Commands = []*cli.Command{
-		{
-			Name:    "server",
-			Aliases: []string{"s"},
-			Usage:   "Run the MCP PostgreSQL server (stdio transport)",
-			Flags: []cli.Flag{
-				&cli.StringFlag{
-					Name:    "config",
-					Aliases: []string{"c"},
-					Value:   "config.yml",
-					Usage:   "path to the configuration file",
+					cfg, err := config.LoadConfig(configPath)
+					if err != nil {
+						return errors.Wrap(err, "failed to load configuration file")
+					}
+
+					if err := logger.InitLogger(cfg.Debug, cfg.Log); err != nil {
+						return errors.Wrap(err, "failed to initialize logger")
+					}
+					defer logger.Sync()
+
+					defer func() {
+						if err := server.CloseDB(); err != nil {
+							fmt.Fprintf(os.Stderr, "Warning: failed to close database connections: %v\n", err)
+						}
+					}()
+
+					return server.Run(cfg, Name, Version, Revision)
 				},
 			},
-			Action: func(c *cli.Context) error {
-				configPath := c.String("config")
-
-				cfg, err := config.LoadConfig(configPath)
-				if err != nil {
-					return errors.Wrap(err, "failed to load configuration file")
-				}
-
-				if err := logger.InitLogger(cfg.Debug, cfg.Log); err != nil {
-					return errors.Wrap(err, "failed to initialize logger")
-				}
-				defer logger.Sync()
-
-				defer func() {
-					if err := server.CloseDB(); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: failed to close database connections: %v\n", err)
-					}
-				}()
-
-				return server.Run(cfg, Name, Version, Revision)
-			},
-		},
-		{
-			Name:  "http",
-			Usage: "Run the MCP PostgreSQL server (Streamable HTTP transport)",
-			Flags: []cli.Flag{
-				&cli.StringFlag{
-					Name:    "config",
-					Aliases: []string{"c"},
-					Value:   "config.yml",
-					Usage:   "path to the configuration file",
+			{
+				Name:  "http",
+				Usage: "Run the MCP PostgreSQL server (Streamable HTTP transport)",
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:    "config",
+						Aliases: []string{"c"},
+						Value:   "config.yml",
+						Usage:   "path to the configuration file",
+					},
 				},
-			},
-			Action: func(c *cli.Context) error {
-				configPath := c.String("config")
+				Action: func(ctx context.Context, cmd *cli.Command) error {
+					configPath := cmd.String("config")
 
-				cfg, err := config.LoadConfig(configPath)
-				if err != nil {
-					return errors.Wrap(err, "failed to load configuration file")
-				}
-
-				if err := logger.InitLogger(cfg.Debug, cfg.Log); err != nil {
-					return errors.Wrap(err, "failed to initialize logger")
-				}
-				defer logger.Sync()
-
-				defer func() {
-					if err := server.CloseDB(); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: failed to close database connections: %v\n", err)
+					cfg, err := config.LoadConfig(configPath)
+					if err != nil {
+						return errors.Wrap(err, "failed to load configuration file")
 					}
-				}()
 
-				return server.RunHTTP(cfg, Name, Version, Revision)
+					if err := logger.InitLogger(cfg.Debug, cfg.Log); err != nil {
+						return errors.Wrap(err, "failed to initialize logger")
+					}
+					defer logger.Sync()
+
+					defer func() {
+						if err := server.CloseDB(); err != nil {
+							fmt.Fprintf(os.Stderr, "Warning: failed to close database connections: %v\n", err)
+						}
+					}()
+
+					return server.RunHTTP(cfg, Name, Version, Revision)
+				},
 			},
 		},
 	}
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 	}
 }
