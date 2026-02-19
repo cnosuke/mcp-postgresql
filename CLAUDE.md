@@ -10,7 +10,7 @@ Provides database access tools (schema inspection, CRUD queries) via stdio and S
 - **Language**: Go 1.24
 - **MCP**: [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) v0.43+
 - **DB Driver**: jackc/pgx/v5 (via stdlib) + jmoiron/sqlx
-- **CLI**: urfave/cli/v2
+- **CLI**: urfave/cli/v3
 - **Config**: jinzhu/configor (YAML + env vars)
 - **Error Handling**: cockroachdb/errors
 - **Logging**: uber-go/zap (to file, suppressed on stdout to avoid MCP stdio interference)
