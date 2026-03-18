@@ -25,7 +25,9 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 
 	cop := &http.CrossOriginProtection{}
 	for _, origin := range cfg.HTTP.AllowedOrigins {
-		cop.AddTrustedOrigin(origin)
+		if err := cop.AddTrustedOrigin(origin); err != nil {
+			return fmt.Errorf("invalid allowed origin %q: %w", origin, err)
+		}
 	}
 
 	httpHandler := mcp.NewStreamableHTTPHandler(
