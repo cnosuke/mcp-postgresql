@@ -107,6 +107,9 @@ func RegisterAllTools(mcpServer *mcp.Server, cfg *config.Config) error {
 		Name:        "desc_table",
 		Description: "Describe the structure of a table including columns, constraints, and indexes",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, input DescTableArgs) (*mcp.CallToolResult, any, error) {
+		if input.Name == "" {
+			return toolError(fmt.Errorf("required argument 'name' must not be empty"))
+		}
 		result, err := handleDescTable(ctx, cfg, input.Name, input.Schema, input.DSN, input.Preset)
 		if err != nil {
 			return toolError(err)
