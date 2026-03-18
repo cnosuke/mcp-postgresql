@@ -10,7 +10,7 @@ import (
 
 	"github.com/cnosuke/mcp-postgresql/config"
 	"github.com/cockroachdb/errors"
-	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.uber.org/zap"
 )
 
@@ -23,12 +23,20 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 		return err
 	}
 
-	httpServer := mcpserver.NewStreamableHTTPServer(mcpServer,
-		mcpserver.WithHeartbeatInterval(30*time.Second),
+	cop := &http.CrossOriginProtection{}
+	for _, origin := range cfg.HTTP.AllowedOrigins {
+		cop.AddTrustedOrigin(origin)
+	}
+
+	httpHandler := mcp.NewStreamableHTTPHandler(
+		func(_ *http.Request) *mcp.Server { return mcpServer },
+		&mcp.StreamableHTTPOptions{
+			CrossOriginProtection: cop,
+		},
 	)
 
 	handler := withOriginValidation(
-		withAuthMiddleware(httpServer, cfg.HTTP.AuthToken),
+		withAuthMiddleware(httpHandler, cfg.HTTP.AuthToken),
 		cfg.HTTP.AllowedOrigins,
 	)
 

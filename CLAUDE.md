@@ -7,8 +7,8 @@ Provides database access tools (schema inspection, CRUD queries) via stdio and S
 
 ## Tech Stack
 
-- **Language**: Go 1.24
-- **MCP**: [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) v0.43+
+- **Language**: Go 1.25
+- **MCP**: [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk)
 - **DB Driver**: jackc/pgx/v5 (via stdlib) + jmoiron/sqlx
 - **CLI**: urfave/cli/v3
 - **Config**: jinzhu/configor (YAML + env vars)
@@ -58,7 +58,7 @@ bin/mcp-postgresql http -c config.yml
 
 - **Dual transport**: Supports both stdio (`server` subcommand) and Streamable HTTP (`http` subcommand) transports.
 - **stdio transport**: MCP communication uses stdin/stdout. Logger output MUST go to a file (not stdout/stderr) to avoid corrupting the MCP protocol.
-- **HTTP transport**: Uses mcp-go `NewStreamableHTTPServer()` with custom `http.ServeMux` for routing. Includes Origin validation (MCP spec MUST) and optional Bearer token authentication with `crypto/subtle.ConstantTimeCompare`. Health check at `/health` (no auth).
+- **HTTP transport**: Uses go-sdk `NewStreamableHTTPHandler()` with custom `http.ServeMux` for routing. Includes Origin validation (go-sdk built-in `CrossOriginProtection` + custom middleware) and optional Bearer token authentication with `crypto/subtle.ConstantTimeCompare`. Health check at `/health` (no auth).
 - **Read-only mode**: When `read_only: true`, write tools (create_table, alter_table, write_query, update_query, delete_query) are not registered, and DB sessions are set to read-only.
 - **DSN resolution**: Priority: Tool DSN param > Tool preset param > cfg.PostgreSQL.DSN > individual fields. Supports both key=value (`host=localhost port=5432 ...`) and URL format (`postgres://user:pass@host/db`).
 - **Connection presets**: `presets` map in config defines named connection profiles. Preset DSN resolution: preset DSN field > build from preset fields. Cache key includes read-only flag to avoid mixing connections.

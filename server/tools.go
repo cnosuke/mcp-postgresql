@@ -9,315 +9,189 @@ import (
 	"time"
 
 	"github.com/cnosuke/mcp-postgresql/config"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/xo/dburl"
+	"go.uber.org/zap"
 )
 
+// Args structs for tool input
+
+type ListPresetArgs struct{}
+
+type ConnectionArgs struct {
+	DSN    string `json:"dsn,omitempty"    jsonschema:"PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."`
+	Preset string `json:"preset,omitempty" jsonschema:"Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."`
+}
+
+type ListTableArgs struct {
+	Schema string `json:"schema,omitempty" jsonschema:"Schema name to list tables from (default: public)"`
+	DSN    string `json:"dsn,omitempty"    jsonschema:"PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."`
+	Preset string `json:"preset,omitempty" jsonschema:"Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."`
+}
+
+type DescTableArgs struct {
+	Name   string `json:"name"             jsonschema:"The name of the table to describe"`
+	Schema string `json:"schema,omitempty" jsonschema:"Schema name where the table is located (default: public)"`
+	DSN    string `json:"dsn,omitempty"    jsonschema:"PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."`
+	Preset string `json:"preset,omitempty" jsonschema:"Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."`
+}
+
+type QueryArgs struct {
+	Query  string `json:"query"            jsonschema:"The SQL query to execute"`
+	DSN    string `json:"dsn,omitempty"    jsonschema:"PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."`
+	Preset string `json:"preset,omitempty" jsonschema:"Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."`
+}
+
+// toolResult is a helper to build a text CallToolResult
+func toolResult(text string) (*mcp.CallToolResult, struct{}, error) {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+	}, struct{}{}, nil
+}
+
+// toolError is a helper to return an error from a tool handler
+func toolError(err error) (*mcp.CallToolResult, struct{}, error) {
+	zap.S().Errorw("tool execution error", "error", err)
+	return nil, struct{}{}, err
+}
+
 // RegisterAllTools - Register all tools with the server
-func RegisterAllTools(mcpServer *server.MCPServer, cfg *config.Config) error {
+func RegisterAllTools(mcpServer *mcp.Server, cfg *config.Config) error {
 	// Preset Tool (always registered)
-	listPresetTool := mcp.NewTool(
-		"list_preset",
-		mcp.WithDescription("List configured connection presets (passwords are never exposed)"),
-	)
-
-	// Schema Tools
-	listDatabaseTool := mcp.NewTool(
-		"list_database",
-		mcp.WithDescription("List all databases in the PostgreSQL server"),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	listSchemaTool := mcp.NewTool(
-		"list_schema",
-		mcp.WithDescription("List all schemas in the current PostgreSQL database (excluding system schemas)"),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	listTableTool := mcp.NewTool(
-		"list_table",
-		mcp.WithDescription("List all tables in the specified schema (default: public)"),
-		mcp.WithString("schema",
-			mcp.Description("Schema name to list tables from (default: public)"),
-		),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	descTableTool := mcp.NewTool(
-		"desc_table",
-		mcp.WithDescription("Describe the structure of a table including columns, constraints, and indexes"),
-		mcp.WithString("name",
-			mcp.Required(),
-			mcp.Description("The name of the table to describe"),
-		),
-		mcp.WithString("schema",
-			mcp.Description("Schema name where the table is located (default: public)"),
-		),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	createTableTool := mcp.NewTool(
-		"create_table",
-		mcp.WithDescription(`Create a new table in the PostgreSQL server.
-Note: PostgreSQL uses separate COMMENT ON statements for comments:
-  COMMENT ON TABLE tablename IS 'description';
-  COMMENT ON COLUMN tablename.columnname IS 'description';`),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("The SQL query to create the table"),
-		),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	alterTableTool := mcp.NewTool(
-		"alter_table",
-		mcp.WithDescription(`Alter an existing table in the PostgreSQL server.
-Note: Use COMMENT ON statements to update column comments. DO NOT drop table or existing columns!`),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("The SQL query to alter the table"),
-		),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	// Data Tools
-	readQueryTool := mcp.NewTool(
-		"read_query",
-		mcp.WithDescription("Execute a read-only SQL query (SELECT only). Make sure you have knowledge of the table structure before writing WHERE conditions. Call `desc_table` first if necessary"),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("The SQL query to execute (SELECT statements only)"),
-		),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	writeQueryTool := mcp.NewTool(
-		"write_query",
-		mcp.WithDescription("Execute an INSERT SQL query. Supports RETURNING clause to return inserted data. Make sure you have knowledge of the table structure before executing the query."),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("The SQL query to execute (INSERT statement, optionally with RETURNING clause)"),
-		),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	updateQueryTool := mcp.NewTool(
-		"update_query",
-		mcp.WithDescription("Execute an UPDATE SQL query. Supports RETURNING clause to return updated data. Make sure there is always a WHERE condition. Call `desc_table` first if necessary"),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("The SQL query to execute (UPDATE statement, optionally with RETURNING clause)"),
-		),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	deleteQueryTool := mcp.NewTool(
-		"delete_query",
-		mcp.WithDescription("Execute a DELETE SQL query. Supports RETURNING clause to return deleted data. Make sure there is always a WHERE condition. Call `desc_table` first if necessary"),
-		mcp.WithString("query",
-			mcp.Required(),
-			mcp.Description("The SQL query to execute (DELETE statement, optionally with RETURNING clause)"),
-		),
-		mcp.WithString("dsn",
-			mcp.Description("PostgreSQL DSN (Data Source Name) string. Supports both key=value format and URL format (postgres://...). If provided, this overrides the configuration. Cannot be used with 'preset' parameter."),
-		),
-		mcp.WithString("preset",
-			mcp.Description("Preset name defined in configuration file. Uses the preset's connection settings. Cannot be used with 'dsn' parameter."),
-		),
-	)
-
-	// Register handlers
-	mcpServer.AddTool(listPresetTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	mcp.AddTool(mcpServer, &mcp.Tool{
+		Name:        "list_preset",
+		Description: "List configured connection presets (passwords are never exposed)",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ ListPresetArgs) (*mcp.CallToolResult, struct{}, error) {
 		result, err := handleListPreset(cfg)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return toolError(err)
 		}
-		return mcp.NewToolResultText(result), nil
+		return toolResult(result)
 	})
 
-	mcpServer.AddTool(listDatabaseTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		dsn := request.GetString("dsn", "")
-		preset := request.GetString("preset", "")
-		result, err := handleListDatabase(ctx, cfg, dsn, preset)
+	// Schema Tools
+	mcp.AddTool(mcpServer, &mcp.Tool{
+		Name:        "list_database",
+		Description: "List all databases in the PostgreSQL server",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ConnectionArgs) (*mcp.CallToolResult, struct{}, error) {
+		result, err := handleListDatabase(ctx, cfg, input.DSN, input.Preset)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return toolError(err)
 		}
-		return mcp.NewToolResultText(result), nil
+		return toolResult(result)
 	})
 
-	mcpServer.AddTool(listSchemaTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		dsn := request.GetString("dsn", "")
-		preset := request.GetString("preset", "")
-		result, err := handleListSchema(ctx, cfg, dsn, preset)
+	mcp.AddTool(mcpServer, &mcp.Tool{
+		Name:        "list_schema",
+		Description: "List all schemas in the current PostgreSQL database (excluding system schemas)",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ConnectionArgs) (*mcp.CallToolResult, struct{}, error) {
+		result, err := handleListSchema(ctx, cfg, input.DSN, input.Preset)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return toolError(err)
 		}
-		return mcp.NewToolResultText(result), nil
+		return toolResult(result)
 	})
 
-	mcpServer.AddTool(listTableTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		schema := request.GetString("schema", "")
-		dsn := request.GetString("dsn", "")
-		preset := request.GetString("preset", "")
-		result, err := handleListTable(ctx, cfg, schema, dsn, preset)
+	mcp.AddTool(mcpServer, &mcp.Tool{
+		Name:        "list_table",
+		Description: "List all tables in the specified schema (default: public)",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ListTableArgs) (*mcp.CallToolResult, struct{}, error) {
+		result, err := handleListTable(ctx, cfg, input.Schema, input.DSN, input.Preset)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return toolError(err)
 		}
-		return mcp.NewToolResultText(result), nil
+		return toolResult(result)
 	})
 
-	mcpServer.AddTool(descTableTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		name, err := request.RequireString("name")
+	mcp.AddTool(mcpServer, &mcp.Tool{
+		Name:        "desc_table",
+		Description: "Describe the structure of a table including columns, constraints, and indexes",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input DescTableArgs) (*mcp.CallToolResult, struct{}, error) {
+		result, err := handleDescTable(ctx, cfg, input.Name, input.Schema, input.DSN, input.Preset)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return toolError(err)
 		}
-		schema := request.GetString("schema", "")
-		dsn := request.GetString("dsn", "")
-		preset := request.GetString("preset", "")
-		result, err := handleDescTable(ctx, cfg, name, schema, dsn, preset)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(result), nil
+		return toolResult(result)
 	})
 
 	if !cfg.PostgreSQL.ReadOnly {
-		mcpServer.AddTool(createTableTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			query, err := request.RequireString("query")
+		mcp.AddTool(mcpServer, &mcp.Tool{
+			Name: "create_table",
+			Description: `Create a new table in the PostgreSQL server.
+Note: PostgreSQL uses separate COMMENT ON statements for comments:
+  COMMENT ON TABLE tablename IS 'description';
+  COMMENT ON COLUMN tablename.columnname IS 'description';`,
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+			result, err := handleExecWithPreset(ctx, cfg, input.Query, input.DSN, input.Preset)
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return toolError(err)
 			}
-			dsn := request.GetString("dsn", "")
-			preset := request.GetString("preset", "")
-			result, err := handleExecWithPreset(ctx, cfg, query, dsn, preset)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			return mcp.NewToolResultText(result), nil
+			return toolResult(result)
 		})
 	}
 
 	if !cfg.PostgreSQL.ReadOnly {
-		mcpServer.AddTool(alterTableTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			query, err := request.RequireString("query")
+		mcp.AddTool(mcpServer, &mcp.Tool{
+			Name: "alter_table",
+			Description: `Alter an existing table in the PostgreSQL server.
+Note: Use COMMENT ON statements to update column comments. DO NOT drop table or existing columns!`,
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+			result, err := handleExecWithPreset(ctx, cfg, input.Query, input.DSN, input.Preset)
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return toolError(err)
 			}
-			dsn := request.GetString("dsn", "")
-			preset := request.GetString("preset", "")
-			result, err := handleExecWithPreset(ctx, cfg, query, dsn, preset)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			return mcp.NewToolResultText(result), nil
+			return toolResult(result)
 		})
 	}
 
-	mcpServer.AddTool(readQueryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		query, err := request.RequireString("query")
+	// Data Tools
+	mcp.AddTool(mcpServer, &mcp.Tool{
+		Name:        "read_query",
+		Description: "Execute a read-only SQL query (SELECT only). Make sure you have knowledge of the table structure before writing WHERE conditions. Call `desc_table` first if necessary",
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+		result, err := handleReadQuery(ctx, cfg, input.Query, input.DSN, input.Preset)
 		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+			return toolError(err)
 		}
-		dsn := request.GetString("dsn", "")
-		preset := request.GetString("preset", "")
-		result, err := handleReadQuery(ctx, cfg, query, dsn, preset)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(result), nil
+		return toolResult(result)
 	})
 
 	if !cfg.PostgreSQL.ReadOnly {
-		mcpServer.AddTool(writeQueryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			query, err := request.RequireString("query")
+		mcp.AddTool(mcpServer, &mcp.Tool{
+			Name:        "write_query",
+			Description: "Execute an INSERT SQL query. Supports RETURNING clause to return inserted data. Make sure you have knowledge of the table structure before executing the query.",
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+			result, err := handleWriteQuery(ctx, cfg, input.Query, "INSERT", input.DSN, input.Preset)
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return toolError(err)
 			}
-			dsn := request.GetString("dsn", "")
-			preset := request.GetString("preset", "")
-			result, err := handleWriteQuery(ctx, cfg, query, "INSERT", dsn, preset)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			return mcp.NewToolResultText(result), nil
+			return toolResult(result)
 		})
 	}
 
 	if !cfg.PostgreSQL.ReadOnly {
-		mcpServer.AddTool(updateQueryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			query, err := request.RequireString("query")
+		mcp.AddTool(mcpServer, &mcp.Tool{
+			Name:        "update_query",
+			Description: "Execute an UPDATE SQL query. Supports RETURNING clause to return updated data. Make sure there is always a WHERE condition. Call `desc_table` first if necessary",
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+			result, err := handleWriteQuery(ctx, cfg, input.Query, "UPDATE", input.DSN, input.Preset)
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return toolError(err)
 			}
-			dsn := request.GetString("dsn", "")
-			preset := request.GetString("preset", "")
-			result, err := handleWriteQuery(ctx, cfg, query, "UPDATE", dsn, preset)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			return mcp.NewToolResultText(result), nil
+			return toolResult(result)
 		})
 	}
 
 	if !cfg.PostgreSQL.ReadOnly {
-		mcpServer.AddTool(deleteQueryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			query, err := request.RequireString("query")
+		mcp.AddTool(mcpServer, &mcp.Tool{
+			Name:        "delete_query",
+			Description: "Execute a DELETE SQL query. Supports RETURNING clause to return deleted data. Make sure there is always a WHERE condition. Call `desc_table` first if necessary",
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+			result, err := handleWriteQuery(ctx, cfg, input.Query, "DELETE", input.DSN, input.Preset)
 			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
+				return toolError(err)
 			}
-			dsn := request.GetString("dsn", "")
-			preset := request.GetString("preset", "")
-			result, err := handleWriteQuery(ctx, cfg, query, "DELETE", dsn, preset)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			return mcp.NewToolResultText(result), nil
+			return toolResult(result)
 		})
 	}
 

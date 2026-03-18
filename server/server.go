@@ -10,8 +10,7 @@ import (
 	"github.com/cnosuke/mcp-postgresql/config"
 	"github.com/cockroachdb/errors"
 	"github.com/jmoiron/sqlx"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/xo/dburl"
 	"go.uber.org/zap"
 
@@ -32,7 +31,7 @@ var (
 )
 
 // NewMCPServer creates and configures an MCPServer with all tools registered
-func NewMCPServer(cfg *config.Config, name, version, revision string) (*server.MCPServer, error) {
+func NewMCPServer(cfg *config.Config, name, version, revision string) (*mcp.Server, error) {
 	// Set read-only mode in DBManager
 	dbManager.SetReadOnly(cfg.PostgreSQL.ReadOnly)
 
@@ -42,24 +41,13 @@ func NewMCPServer(cfg *config.Config, name, version, revision string) (*server.M
 		versionString = versionString + " (" + revision + ")"
 	}
 
-	// Create custom hooks for error handling
-	hooks := &server.Hooks{}
-	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
-		zap.S().Errorw("MCP error occurred",
-			"id", id,
-			"method", method,
-			"error", err,
-		)
-	})
-
 	zap.S().Debugw("creating MCP server",
 		"name", name,
 		"version", versionString,
 	)
-	mcpServer := server.NewMCPServer(
-		name,
-		versionString,
-		server.WithHooks(hooks),
+	mcpServer := mcp.NewServer(
+		&mcp.Implementation{Name: name, Version: versionString},
+		nil,
 	)
 
 	zap.S().Debugw("registering PostgreSQL tools")
@@ -81,7 +69,7 @@ func Run(cfg *config.Config, name string, version string, revision string) error
 	}
 
 	zap.S().Infow("starting MCP server with stdio transport")
-	if err := server.ServeStdio(mcpServer); err != nil {
+	if err := mcpServer.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		zap.S().Errorw("failed to start server", "error", err)
 		return errors.Wrap(err, "failed to start server")
 	}
