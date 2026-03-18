@@ -43,16 +43,16 @@ type QueryArgs struct {
 }
 
 // toolResult is a helper to build a text CallToolResult
-func toolResult(text string) (*mcp.CallToolResult, struct{}, error) {
+func toolResult(text string) (*mcp.CallToolResult, any, error) {
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: text}},
-	}, struct{}{}, nil
+	}, nil, nil
 }
 
 // toolError is a helper to return an error from a tool handler
-func toolError(err error) (*mcp.CallToolResult, struct{}, error) {
+func toolError(err error) (*mcp.CallToolResult, any, error) {
 	zap.S().Errorw("tool execution error", "error", err)
-	return nil, struct{}{}, err
+	return nil, nil, err
 }
 
 // RegisterAllTools - Register all tools with the server
@@ -61,7 +61,7 @@ func RegisterAllTools(mcpServer *mcp.Server, cfg *config.Config) error {
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:        "list_preset",
 		Description: "List configured connection presets (passwords are never exposed)",
-	}, func(_ context.Context, _ *mcp.CallToolRequest, _ ListPresetArgs) (*mcp.CallToolResult, struct{}, error) {
+	}, func(_ context.Context, _ *mcp.CallToolRequest, _ ListPresetArgs) (*mcp.CallToolResult, any, error) {
 		result, err := handleListPreset(cfg)
 		if err != nil {
 			return toolError(err)
@@ -73,7 +73,7 @@ func RegisterAllTools(mcpServer *mcp.Server, cfg *config.Config) error {
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:        "list_database",
 		Description: "List all databases in the PostgreSQL server",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ConnectionArgs) (*mcp.CallToolResult, struct{}, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ConnectionArgs) (*mcp.CallToolResult, any, error) {
 		result, err := handleListDatabase(ctx, cfg, input.DSN, input.Preset)
 		if err != nil {
 			return toolError(err)
@@ -84,7 +84,7 @@ func RegisterAllTools(mcpServer *mcp.Server, cfg *config.Config) error {
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:        "list_schema",
 		Description: "List all schemas in the current PostgreSQL database (excluding system schemas)",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ConnectionArgs) (*mcp.CallToolResult, struct{}, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ConnectionArgs) (*mcp.CallToolResult, any, error) {
 		result, err := handleListSchema(ctx, cfg, input.DSN, input.Preset)
 		if err != nil {
 			return toolError(err)
@@ -95,7 +95,7 @@ func RegisterAllTools(mcpServer *mcp.Server, cfg *config.Config) error {
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:        "list_table",
 		Description: "List all tables in the specified schema (default: public)",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ListTableArgs) (*mcp.CallToolResult, struct{}, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input ListTableArgs) (*mcp.CallToolResult, any, error) {
 		result, err := handleListTable(ctx, cfg, input.Schema, input.DSN, input.Preset)
 		if err != nil {
 			return toolError(err)
@@ -106,7 +106,7 @@ func RegisterAllTools(mcpServer *mcp.Server, cfg *config.Config) error {
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:        "desc_table",
 		Description: "Describe the structure of a table including columns, constraints, and indexes",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input DescTableArgs) (*mcp.CallToolResult, struct{}, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input DescTableArgs) (*mcp.CallToolResult, any, error) {
 		result, err := handleDescTable(ctx, cfg, input.Name, input.Schema, input.DSN, input.Preset)
 		if err != nil {
 			return toolError(err)
@@ -121,7 +121,7 @@ func RegisterAllTools(mcpServer *mcp.Server, cfg *config.Config) error {
 Note: PostgreSQL uses separate COMMENT ON statements for comments:
   COMMENT ON TABLE tablename IS 'description';
   COMMENT ON COLUMN tablename.columnname IS 'description';`,
-		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, any, error) {
 			result, err := handleExecWithPreset(ctx, cfg, input.Query, input.DSN, input.Preset)
 			if err != nil {
 				return toolError(err)
@@ -135,7 +135,7 @@ Note: PostgreSQL uses separate COMMENT ON statements for comments:
 			Name: "alter_table",
 			Description: `Alter an existing table in the PostgreSQL server.
 Note: Use COMMENT ON statements to update column comments. DO NOT drop table or existing columns!`,
-		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, any, error) {
 			result, err := handleExecWithPreset(ctx, cfg, input.Query, input.DSN, input.Preset)
 			if err != nil {
 				return toolError(err)
@@ -148,7 +148,7 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:        "read_query",
 		Description: "Execute a read-only SQL query (SELECT only). Make sure you have knowledge of the table structure before writing WHERE conditions. Call `desc_table` first if necessary",
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, any, error) {
 		result, err := handleReadQuery(ctx, cfg, input.Query, input.DSN, input.Preset)
 		if err != nil {
 			return toolError(err)
@@ -160,7 +160,7 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 		mcp.AddTool(mcpServer, &mcp.Tool{
 			Name:        "write_query",
 			Description: "Execute an INSERT SQL query. Supports RETURNING clause to return inserted data. Make sure you have knowledge of the table structure before executing the query.",
-		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, any, error) {
 			result, err := handleWriteQuery(ctx, cfg, input.Query, "INSERT", input.DSN, input.Preset)
 			if err != nil {
 				return toolError(err)
@@ -173,7 +173,7 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 		mcp.AddTool(mcpServer, &mcp.Tool{
 			Name:        "update_query",
 			Description: "Execute an UPDATE SQL query. Supports RETURNING clause to return updated data. Make sure there is always a WHERE condition. Call `desc_table` first if necessary",
-		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, any, error) {
 			result, err := handleWriteQuery(ctx, cfg, input.Query, "UPDATE", input.DSN, input.Preset)
 			if err != nil {
 				return toolError(err)
@@ -186,7 +186,7 @@ Note: Use COMMENT ON statements to update column comments. DO NOT drop table or 
 		mcp.AddTool(mcpServer, &mcp.Tool{
 			Name:        "delete_query",
 			Description: "Execute a DELETE SQL query. Supports RETURNING clause to return deleted data. Make sure there is always a WHERE condition. Call `desc_table` first if necessary",
-		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, struct{}, error) {
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input QueryArgs) (*mcp.CallToolResult, any, error) {
 			result, err := handleWriteQuery(ctx, cfg, input.Query, "DELETE", input.DSN, input.Preset)
 			if err != nil {
 				return toolError(err)
