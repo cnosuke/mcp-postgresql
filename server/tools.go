@@ -435,7 +435,7 @@ ORDER BY tc.constraint_type, tc.constraint_name`
 			return "", err
 		}
 		constraintCount++
-		result.WriteString(fmt.Sprintf("  %s: %s (%s)\n", constraintType, constraintName, columns))
+		fmt.Fprintf(&result, "  %s: %s (%s)\n", constraintType, constraintName, columns)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -468,7 +468,7 @@ ORDER BY indexname`
 			return "", err
 		}
 		indexCount++
-		result.WriteString(fmt.Sprintf("  %s\n    %s\n", indexName, indexDef))
+		fmt.Fprintf(&result, "  %s\n    %s\n", indexName, indexDef)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -486,7 +486,7 @@ SELECT obj_description(($1 || '.' || $2)::regclass, 'pg_class') as table_comment
 
 	var tableComment *string
 	if err := db.QueryRowxContext(queryCtx, tableCommentQuery, schema, name).Scan(&tableComment); err == nil && tableComment != nil && *tableComment != "" {
-		result.WriteString(fmt.Sprintf("\n== Table Comment ==\n  %s\n", *tableComment))
+		fmt.Fprintf(&result, "\n== Table Comment ==\n  %s\n", *tableComment)
 	}
 
 	return result.String(), nil

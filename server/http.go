@@ -116,5 +116,5 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"status":"ok"}` + "\n"))
+	_, _ = w.Write([]byte(`{"status":"ok"}` + "\n"))
 }
