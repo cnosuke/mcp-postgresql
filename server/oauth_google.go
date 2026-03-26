@@ -222,10 +222,6 @@ func (v *GoogleTokenValidator) ValidateGoogleIDToken(ctx context.Context, idToke
 		return nil, errors.Newf("invalid issuer: %s", claims.Issuer)
 	}
 
-	if time.Unix(claims.ExpiresAt, 0).Before(time.Now()) {
-		return nil, errors.New("token expired")
-	}
-
 	if claims.Audience != expectedAudience {
 		return nil, errors.Newf("audience mismatch: got %s, expected %s", claims.Audience, expectedAudience)
 	}

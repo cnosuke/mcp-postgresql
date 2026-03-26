@@ -40,16 +40,19 @@ func testOAuthHandler() *OAuthHandler {
 	}
 	cfg.HTTP.Endpoint = "/mcp"
 
+	issuer := cfg.OAuth.NormalizedIssuer()
 	return &OAuthHandler{
 		cfg:             cfg,
+		issuer:          issuer,
+		resourceURL:     issuer + cfg.HTTP.Endpoint,
 		store:           NewOAuthStore(),
-		jwtMgr:          NewJWTManager(cfg.OAuth.SigningKey, cfg.OAuth.NormalizedIssuer(), cfg.OAuth.TokenExpiry),
+		jwtMgr:          NewJWTManager(cfg.OAuth.SigningKey, issuer, cfg.OAuth.TokenExpiry),
 		googleValidator: NewGoogleTokenValidator(),
 		googleOAuth2Config: &oauth2.Config{
 			ClientID:     cfg.OAuth.Google.ClientID,
 			ClientSecret: cfg.OAuth.Google.ClientSecret,
 			Endpoint:     google.Endpoint,
-			RedirectURL:  cfg.OAuth.NormalizedIssuer() + "/callback",
+			RedirectURL:  issuer + "/callback",
 		},
 	}
 }
@@ -60,7 +63,7 @@ func TestHandleAuthServerMetadata(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil)
 	rec := httptest.NewRecorder()
 
-	h.HandleAuthServerMetadata(rec, req)
+	h.AuthServerMetadataHandler().ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
@@ -84,7 +87,7 @@ func TestHandleAuthServerMetadataOptions(t *testing.T) {
 	req := httptest.NewRequest(http.MethodOptions, "/.well-known/oauth-authorization-server", nil)
 	rec := httptest.NewRecorder()
 
-	h.HandleAuthServerMetadata(rec, req)
+	h.AuthServerMetadataHandler().ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusNoContent, rec.Code)
 }
@@ -95,7 +98,7 @@ func TestHandleAuthServerMetadataMethodNotAllowed(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/.well-known/oauth-authorization-server", nil)
 	rec := httptest.NewRecorder()
 
-	h.HandleAuthServerMetadata(rec, req)
+	h.AuthServerMetadataHandler().ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 }
@@ -227,7 +230,7 @@ func TestHandleToken_FullFlow(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
-	h.HandleToken(rec, req)
+	h.TokenHandler().ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
@@ -264,7 +267,7 @@ func TestHandleToken_InvalidCode(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
-	h.HandleToken(rec, req)
+	h.TokenHandler().ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "invalid_grant")
@@ -300,7 +303,7 @@ func TestHandleToken_PKCEFailure(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
-	h.HandleToken(rec, req)
+	h.TokenHandler().ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "PKCE verification failed")
@@ -336,7 +339,7 @@ func TestHandleToken_ClientIDMismatch(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 
-	h.HandleToken(rec, req)
+	h.TokenHandler().ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "client_id mismatch")

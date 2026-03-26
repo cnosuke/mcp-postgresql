@@ -50,24 +50,21 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 		zap.S().Infow("OAuth authentication enabled", "issuer", cfg.OAuth.NormalizedIssuer())
 
 		oauthHandler := NewOAuthHandler(ctx, cfg)
-		issuer := cfg.OAuth.NormalizedIssuer()
-		resourceURL := issuer + cfg.HTTP.Endpoint
-		resourceMetadataURL := issuer + "/.well-known/oauth-protected-resource"
 
 		mcpHandler := withRequestLogging(
 			withOriginValidation(
-				withOAuthMiddleware(httpHandler, oauthHandler.jwtMgr, resourceMetadataURL, resourceURL),
+				oauthHandler.MakeOAuthMiddleware(httpHandler),
 				cfg.HTTP.AllowedOrigins,
 			),
 		)
 		mux.Handle(cfg.HTTP.Endpoint, mcpHandler)
 
 		mux.Handle("/.well-known/oauth-protected-resource", oauthHandler.ProtectedResourceMetadataHandler())
-		mux.HandleFunc("/.well-known/oauth-authorization-server", oauthHandler.HandleAuthServerMetadata)
+		mux.Handle("/.well-known/oauth-authorization-server", oauthHandler.AuthServerMetadataHandler())
 		mux.HandleFunc("/authorize", oauthHandler.HandleAuthorize)
 		mux.HandleFunc("/consent", oauthHandler.HandleConsent)
 		mux.HandleFunc("/callback", oauthHandler.HandleCallback)
-		mux.HandleFunc("/token", oauthHandler.HandleToken)
+		mux.Handle("/token", oauthHandler.TokenHandler())
 	} else {
 		handler := withRequestLogging(
 			withOriginValidation(

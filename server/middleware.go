@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/auth"
 	"go.uber.org/zap"
 )
 
@@ -56,6 +55,7 @@ func withAuthMiddleware(next http.Handler, authToken string) http.Handler {
 		return next
 	}
 
+	expected := []byte(authToken)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := extractBearerToken(r)
 		if token == "" {
@@ -63,7 +63,7 @@ func withAuthMiddleware(next http.Handler, authToken string) http.Handler {
 			return
 		}
 
-		if subtle.ConstantTimeCompare([]byte(token), []byte(authToken)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(token), expected) != 1 {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -167,13 +167,6 @@ func peekJSONRPCRequest(r *http.Request) (*jsonRPCInfo, error) {
 	return info, nil
 }
 
-func withOAuthMiddleware(next http.Handler, jwtMgr *JWTManager, resourceMetadataURL, resourceURL string) http.Handler {
-	verifier := jwtMgr.MakeTokenVerifier(resourceURL)
-	middleware := auth.RequireBearerToken(verifier, &auth.RequireBearerTokenOptions{
-		ResourceMetadataURL: resourceMetadataURL,
-	})
-	return middleware(next)
-}
 
 // withRequestLogging wraps an http.Handler with request logging.
 func withRequestLogging(next http.Handler) http.Handler {

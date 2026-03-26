@@ -27,11 +27,14 @@ import (
 )
 
 type OAuthHandler struct {
-	cfg              *config.Config
-	store            *OAuthStore
-	jwtMgr           *JWTManager
-	googleValidator  *GoogleTokenValidator
+	cfg                *config.Config
+	issuer             string
+	resourceURL        string
+	store              *OAuthStore
+	jwtMgr             *JWTManager
+	googleValidator    *GoogleTokenValidator
 	googleOAuth2Config *oauth2.Config
+	cimdClient         *http.Client
 }
 
 func NewOAuthHandler(ctx context.Context, cfg *config.Config) *OAuthHandler {
@@ -42,6 +45,8 @@ func NewOAuthHandler(ctx context.Context, cfg *config.Config) *OAuthHandler {
 
 	return &OAuthHandler{
 		cfg:             cfg,
+		issuer:          issuer,
+		resourceURL:     issuer + cfg.HTTP.Endpoint,
 		store:           store,
 		jwtMgr:          NewJWTManager(cfg.OAuth.SigningKey, issuer, cfg.OAuth.TokenExpiry),
 		googleValidator: NewGoogleTokenValidator(),
@@ -52,50 +57,61 @@ func NewOAuthHandler(ctx context.Context, cfg *config.Config) *OAuthHandler {
 			Endpoint:     google.Endpoint,
 			RedirectURL:  issuer + "/callback",
 		},
+		cimdClient: &http.Client{
+			Timeout: 5 * time.Second,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return errors.New("redirects are not allowed")
+			},
+			Transport: &http.Transport{
+				DialContext: ssrfSafeDialContext,
+			},
+		},
 	}
 }
 
 func (h *OAuthHandler) ProtectedResourceMetadataHandler() http.Handler {
-	issuer := h.cfg.OAuth.NormalizedIssuer()
 	metadata := &oauthex.ProtectedResourceMetadata{
-		Resource:               issuer + h.cfg.HTTP.Endpoint,
-		AuthorizationServers:   []string{issuer},
+		Resource:               h.resourceURL,
+		AuthorizationServers:   []string{h.issuer},
 		BearerMethodsSupported: []string{"header"},
 		ResourceName:           "MCP PostgreSQL Server",
 	}
 	return auth.ProtectedResourceMetadataHandler(metadata)
 }
 
-func (h *OAuthHandler) HandleAuthServerMetadata(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+func (h *OAuthHandler) ResourceMetadataURL() string {
+	return h.issuer + "/.well-known/oauth-protected-resource"
+}
 
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
+func (h *OAuthHandler) MakeOAuthMiddleware(next http.Handler) http.Handler {
+	verifier := h.jwtMgr.MakeTokenVerifier(h.resourceURL)
+	middleware := auth.RequireBearerToken(verifier, &auth.RequireBearerTokenOptions{
+		ResourceMetadataURL: h.ResourceMetadataURL(),
+	})
+	return middleware(next)
+}
 
-	issuer := h.cfg.OAuth.NormalizedIssuer()
+func (h *OAuthHandler) AuthServerMetadataHandler() http.Handler {
 	metadata := AuthServerMetadata{
-		Issuer:                                    issuer,
-		AuthorizationEndpoint:                     issuer + "/authorize",
-		TokenEndpoint:                             issuer + "/token",
-		ResponseTypesSupported:                    []string{"code"},
-		GrantTypesSupported:                       []string{"authorization_code"},
-		TokenEndpointAuthMethodsSupported:         []string{"none"},
-		CodeChallengeMethodsSupported:             []string{"S256"},
-		ClientIDMetadataDocumentSupported:         true,
+		Issuer:                            h.issuer,
+		AuthorizationEndpoint:             h.issuer + "/authorize",
+		TokenEndpoint:                     h.issuer + "/token",
+		ResponseTypesSupported:            []string{"code"},
+		GrantTypesSupported:               []string{"authorization_code"},
+		TokenEndpointAuthMethodsSupported: []string{"none"},
+		CodeChallengeMethodsSupported:     []string{"S256"},
+		ClientIDMetadataDocumentSupported: true,
 	}
+	body, _ := json.Marshal(metadata)
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(metadata); err != nil {
-		zap.S().Errorw("failed to encode auth server metadata", "error", err)
-	}
+	return withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(body)
+	}), "GET")
 }
 
 func (h *OAuthHandler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
@@ -132,7 +148,7 @@ func (h *OAuthHandler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	var clientName string
 	if strings.HasPrefix(clientID, "https://") {
-		meta, err := fetchCIMDMetadata(r.Context(), clientID)
+		meta, err := h.fetchCIMDMetadata(r.Context(), clientID)
 		if err != nil {
 			zap.S().Warnw("failed to fetch CIMD metadata", "client_id", clientID, "error", err)
 			http.Error(w, "failed to fetch client metadata", http.StatusBadRequest)
@@ -295,15 +311,11 @@ func (h *OAuthHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectURL.String(), http.StatusFound)
 }
 
-func (h *OAuthHandler) HandleToken(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+func (h *OAuthHandler) TokenHandler() http.Handler {
+	return withCORS(http.HandlerFunc(h.handleToken), "POST")
+}
 
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
+func (h *OAuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -349,7 +361,7 @@ func (h *OAuthHandler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 	audience := ac.Resource
 	if audience == "" {
-		audience = h.cfg.OAuth.NormalizedIssuer() + h.cfg.HTTP.Endpoint
+		audience = h.resourceURL
 	}
 
 	accessToken, err := h.jwtMgr.IssueAccessToken(ac.UserID, ac.Email, "mcp", audience, ac.ClientID)
@@ -369,6 +381,19 @@ func (h *OAuthHandler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func withCORS(next http.Handler, methods string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", methods+", OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func writeTokenError(w http.ResponseWriter, errCode, description string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -379,7 +404,6 @@ func writeTokenError(w http.ResponseWriter, errCode, description string) {
 	})
 }
 
-// --- Helpers ---
 
 func randomHex(n int) string {
 	b := make([]byte, n)
@@ -432,7 +456,6 @@ func validateRedirectURI(requestURI string, allowedURIs []string) bool {
 	return false
 }
 
-// --- CIMD (Client ID Metadata Document) ---
 
 type cimdMetadata struct {
 	ClientName   string   `json:"client_name"`
@@ -470,19 +493,9 @@ func isPrivateIP(ip net.IP) bool {
 	return false
 }
 
-func fetchCIMDMetadata(ctx context.Context, clientIDURL string) (*cimdMetadata, error) {
+func (h *OAuthHandler) fetchCIMDMetadata(ctx context.Context, clientIDURL string) (*cimdMetadata, error) {
 	if _, err := url.Parse(clientIDURL); err != nil {
 		return nil, errors.Wrap(err, "parsing client_id URL")
-	}
-
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return errors.New("redirects are not allowed")
-		},
-		Transport: &http.Transport{
-			DialContext: ssrfSafeDialContext,
-		},
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, clientIDURL, nil)
@@ -490,7 +503,7 @@ func fetchCIMDMetadata(ctx context.Context, clientIDURL string) (*cimdMetadata, 
 		return nil, errors.Wrap(err, "creating request")
 	}
 
-	resp, err := client.Do(req)
+	resp, err := h.cimdClient.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "fetching CIMD")
 	}
@@ -527,7 +540,6 @@ func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, e
 	return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
 }
 
-// --- Consent Page Template ---
 
 var consentPageTemplate = template.Must(template.New("consent").Parse(`<!DOCTYPE html>
 <html lang="en">

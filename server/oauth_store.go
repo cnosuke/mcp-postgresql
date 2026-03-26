@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+const (
+	pendingAuthzTTL = 10 * time.Minute
+	authCodeTTL     = 5 * time.Minute
+)
+
 type PendingAuthorization struct {
 	ClientID            string
 	ClientName          string
@@ -105,14 +110,14 @@ func (s *OAuthStore) Cleanup() {
 	now := time.Now()
 
 	for key, pa := range s.pendingAuthz {
-		if now.Sub(pa.CreatedAt) > 10*time.Minute {
+		if now.Sub(pa.CreatedAt) > pendingAuthzTTL {
 			delete(s.csrfTokens, pa.CSRFToken)
 			delete(s.pendingAuthz, key)
 		}
 	}
 
 	for key, ac := range s.authCodes {
-		if now.Sub(ac.CreatedAt) > 5*time.Minute {
+		if now.Sub(ac.CreatedAt) > authCodeTTL {
 			delete(s.authCodes, key)
 		}
 	}
