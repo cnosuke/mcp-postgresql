@@ -75,7 +75,7 @@ func buildConsoleCores(level zapcore.Level) []zapcore.Core {
 
 	return []zapcore.Core{
 		zapcore.NewCore(encoder, zapcore.Lock(zapcore.AddSync(os.Stdout)), infoAndBelow),
-		zapcore.NewCore(encoder, zapcore.Lock(zapcore.AddSync(os.Stderr)), warnAndAbove),
+		zapcore.NewCore(encoder.Clone(), zapcore.Lock(zapcore.AddSync(os.Stderr)), warnAndAbove),
 	}
 }
 
