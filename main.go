@@ -48,7 +48,7 @@ func main() {
 						return errors.Wrap(err, "failed to load configuration file")
 					}
 
-					if err := logger.InitLogger(cfg.Debug, cfg.Log); err != nil {
+					if err := logger.InitLogger(cfg.LogLevel, cfg.Log, true); err != nil {
 						return errors.Wrap(err, "failed to initialize logger")
 					}
 					defer logger.Sync()
@@ -81,7 +81,7 @@ func main() {
 						return errors.Wrap(err, "failed to load configuration file")
 					}
 
-					if err := logger.InitLogger(cfg.Debug, cfg.Log); err != nil {
+					if err := logger.InitLogger(cfg.LogLevel, cfg.Log, false); err != nil {
 						return errors.Wrap(err, "failed to initialize logger")
 					}
 					defer logger.Sync()

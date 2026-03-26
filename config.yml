@@ -1,5 +1,5 @@
 log: 'mcp-postgresql.log'
-debug: false
+log_level: 'info'
 
 postgresql:
   host: 'localhost'

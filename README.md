@@ -38,8 +38,8 @@ docker pull cnosuke/mcp-postgresql
 ### Configuration File (config.yml)
 
 ```yaml
-log: 'mcp-postgresql.log'  # Log file path (empty for no logging)
-debug: false
+log: 'mcp-postgresql.log'  # Log file path (empty for no file logging; HTTP mode always outputs to console)
+log_level: 'info'          # debug, info, warn, error
 
 postgresql:
   host: 'localhost'
@@ -91,7 +91,7 @@ All configuration options can be overridden via environment variables:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LOG_PATH` | Log file path | (empty) |
-| `DEBUG` | Enable debug mode | false |
+| `LOG_LEVEL` | Log level (debug, info, warn, error) | info |
 | `POSTGRES_HOST` | PostgreSQL host | localhost |
 | `POSTGRES_PORT` | PostgreSQL port | 5432 |
 | `POSTGRES_USER` | PostgreSQL user | postgres |
