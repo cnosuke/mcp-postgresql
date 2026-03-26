@@ -73,7 +73,7 @@ Config is loaded from YAML file with env var overrides:
 | YAML Key                  | Env Var                 | Default     |
 |---------------------------|-------------------------|-------------|
 | `log`                     | `LOG_PATH`              | `""`        |
-| `debug`                   | `DEBUG`                 | `false`     |
+| `log_level`               | `LOG_LEVEL`             | `"info"`    |
 | `postgresql.host`         | `POSTGRES_HOST`         | `localhost` |
 | `postgresql.port`         | `POSTGRES_PORT`         | `5432`      |
 | `postgresql.user`         | `POSTGRES_USER`         | `postgres`  |

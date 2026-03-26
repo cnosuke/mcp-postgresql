@@ -21,7 +21,7 @@ type PresetConfig struct {
 // Config - Application configuration
 type Config struct {
 	Log        string `yaml:"log" default:"" env:"LOG_PATH"`
-	Debug      bool   `yaml:"debug" default:"false" env:"DEBUG"`
+	LogLevel   string `yaml:"log_level" default:"info" env:"LOG_LEVEL"`
 	PostgreSQL struct {
 		Host         string `yaml:"host" default:"localhost" env:"POSTGRES_HOST"`
 		User         string `yaml:"user" default:"postgres" env:"POSTGRES_USER"`

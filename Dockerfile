@@ -29,7 +29,7 @@ COPY --from=builder /app/config.yml /app/config.yml
 
 # Define environment variables with default values
 ENV LOG_PATH=""
-ENV DEBUG="false"
+ENV LOG_LEVEL="info"
 ENV POSTGRES_HOST="localhost"
 ENV POSTGRES_PORT="5432"
 ENV POSTGRES_USER="postgres"

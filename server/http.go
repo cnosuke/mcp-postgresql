@@ -37,9 +37,11 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 		},
 	)
 
-	handler := withOriginValidation(
-		withAuthMiddleware(httpHandler, cfg.HTTP.AuthToken),
-		cfg.HTTP.AllowedOrigins,
+	handler := withRequestLogging(
+		withOriginValidation(
+			withAuthMiddleware(httpHandler, cfg.HTTP.AuthToken),
+			cfg.HTTP.AllowedOrigins,
+		),
 	)
 
 	mux := http.NewServeMux()
