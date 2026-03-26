@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/cockroachdb/errors v1.12.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/jinzhu/configor v1.2.2
 	github.com/jmoiron/sqlx v1.4.0
