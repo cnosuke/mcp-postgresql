@@ -39,6 +39,7 @@ ENV POSTGRES_SCHEMA="public"
 ENV POSTGRES_SSLMODE="disable"
 ENV POSTGRES_DSN=""
 ENV POSTGRES_READ_ONLY="false"
+ENV POSTGRES_QUERY_TIMEOUT="30"
 ENV HTTP_HOST="0.0.0.0"
 ENV HTTP_PORT="8080"
 ENV HTTP_ENDPOINT="/mcp"
@@ -56,5 +57,7 @@ ENV GOOGLE_ALLOWED_EMAILS=""
 # Expose HTTP port
 EXPOSE 8080
 
-# Set entrypoint (stdio transport by default; override with "http" for HTTP transport)
-ENTRYPOINT ["/app/bin/mcp-postgresql", "server", "--config=/app/config.yml"]
+# Default: stdio transport. Override with "http" for HTTP transport:
+#   docker run ... cnosuke/mcp-postgresql http --config=/app/config.yml
+ENTRYPOINT ["/app/bin/mcp-postgresql"]
+CMD ["server", "--config=/app/config.yml"]

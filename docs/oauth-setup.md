@@ -130,11 +130,16 @@ docker run -p 8080:8080 \
   -e POSTGRES_DATABASE=mydb \
   -e OAUTH_ENABLED=true \
   -e OAUTH_ISSUER=https://mcp.example.com \
-  -e OAUTH_SIGNING_KEY=$(openssl rand -hex 32) \
+  -e OAUTH_SIGNING_KEY=your-pre-generated-signing-key \
   -e GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com \
   -e GOOGLE_CLIENT_SECRET=your-client-secret \
   -e GOOGLE_ALLOWED_DOMAINS=example.com \
-  cnosuke/mcp-postgresql http
+  cnosuke/mcp-postgresql http --config=/app/config.yml
+```
+
+Generate a signing key beforehand and reuse it across restarts:
+```bash
+openssl rand -hex 32
 ```
 
 When using a reverse proxy (nginx, Caddy, etc.) in front of Docker, ensure:

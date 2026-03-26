@@ -102,6 +102,7 @@ All configuration options can be overridden via environment variables:
 | `POSTGRES_SSLMODE` | SSL mode | disable |
 | `POSTGRES_DSN` | Direct DSN connection string | (empty) |
 | `POSTGRES_READ_ONLY` | Read-only mode | false |
+| `POSTGRES_QUERY_TIMEOUT` | Query timeout in seconds | 30 |
 | `HTTP_HOST` | HTTP server bind address | 127.0.0.1 |
 | `HTTP_PORT` | HTTP server port | 8080 |
 | `HTTP_ENDPOINT` | MCP endpoint path | /mcp |
@@ -177,7 +178,7 @@ docker run -p 8080:8080 \
            -e POSTGRES_PASSWORD=secret \
            -e POSTGRES_DATABASE=mydb \
            -e HTTP_AUTH_TOKEN=your-secret-token \
-           cnosuke/mcp-postgresql http
+           cnosuke/mcp-postgresql http --config=/app/config.yml
 
 # HTTP transport with OAuth
 docker run -p 8080:8080 \
@@ -187,11 +188,11 @@ docker run -p 8080:8080 \
            -e POSTGRES_DATABASE=mydb \
            -e OAUTH_ENABLED=true \
            -e OAUTH_ISSUER=https://mcp.example.com \
-           -e OAUTH_SIGNING_KEY=$(openssl rand -hex 32) \
+           -e OAUTH_SIGNING_KEY=your-pre-generated-signing-key \
            -e GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com \
            -e GOOGLE_CLIENT_SECRET=your-client-secret \
            -e GOOGLE_ALLOWED_DOMAINS=example.com \
-           cnosuke/mcp-postgresql http
+           cnosuke/mcp-postgresql http --config=/app/config.yml
 ```
 
 ### Client Configuration
