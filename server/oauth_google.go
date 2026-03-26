@@ -59,7 +59,7 @@ func (v *GoogleTokenValidator) fetchJWKS(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "fetching JWKS")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return errors.Newf("JWKS endpoint returned status %d", resp.StatusCode)

@@ -113,7 +113,7 @@ func (h *OAuthHandler) AuthServerMetadataHandler() http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(body)
+		_, _ = w.Write(body)
 	}), "GET")
 }
 
@@ -376,7 +376,7 @@ func (h *OAuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"access_token": accessToken,
 		"token_type":   "Bearer",
 		"expires_in":   h.cfg.OAuth.TokenExpiry,
@@ -401,7 +401,7 @@ func writeTokenError(w http.ResponseWriter, errCode, description string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusBadRequest)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"error":             errCode,
 		"error_description": description,
 	})
@@ -495,10 +495,6 @@ func isPrivateIP(ip net.IP) bool {
 }
 
 func (h *OAuthHandler) fetchCIMDMetadata(ctx context.Context, clientIDURL string) (*cimdMetadata, error) {
-	if _, err := url.Parse(clientIDURL); err != nil {
-		return nil, errors.Wrap(err, "parsing client_id URL")
-	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, clientIDURL, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating request")
@@ -508,7 +504,7 @@ func (h *OAuthHandler) fetchCIMDMetadata(ctx context.Context, clientIDURL string
 	if err != nil {
 		return nil, errors.Wrap(err, "fetching CIMD")
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, errors.Newf("CIMD returned status %d", resp.StatusCode)
