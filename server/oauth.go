@@ -137,6 +137,10 @@ func (h *OAuthHandler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported response_type", http.StatusBadRequest)
 		return
 	}
+	if resource != "" && resource != h.resourceURL {
+		http.Error(w, "invalid resource", http.StatusBadRequest)
+		return
+	}
 	if codeChallenge == "" {
 		http.Error(w, "code_challenge is required", http.StatusBadRequest)
 		return
@@ -202,6 +206,8 @@ func (h *OAuthHandler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 	if err := consentPageTemplate.Execute(w, map[string]string{
 		"ClientName":  clientName,
 		"RedirectURI": redirectURI,
@@ -227,7 +233,7 @@ func (h *OAuthHandler) HandleConsent(w http.ResponseWriter, r *http.Request) {
 	googleState := r.FormValue("google_state")
 	csrfToken := r.FormValue("csrf_token")
 
-	pa := h.store.GetPendingByCSRF(csrfToken)
+	pa := h.store.ConsumePendingByCSRF(csrfToken)
 	if pa == nil {
 		http.Error(w, "invalid or expired csrf token", http.StatusBadRequest)
 		return
@@ -340,7 +346,7 @@ func (h *OAuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ac := h.store.ConsumeAuthCode(code)
+	ac := h.store.GetAuthCode(code)
 	if ac == nil {
 		writeTokenError(w, "invalid_grant", "invalid or expired authorization code")
 		return
@@ -361,6 +367,8 @@ func (h *OAuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeTokenError(w, "invalid_grant", "PKCE verification failed")
 		return
 	}
+
+	h.store.ConsumeAuthCode(code)
 
 	audience := ac.Resource
 	if audience == "" {
@@ -464,34 +472,9 @@ type cimdMetadata struct {
 	ClientURI    string   `json:"client_uri"`
 }
 
-var privateNetworks = []net.IPNet{
-	{IP: net.IP{10, 0, 0, 0}, Mask: net.CIDRMask(8, 32)},
-	{IP: net.IP{172, 16, 0, 0}, Mask: net.CIDRMask(12, 32)},
-	{IP: net.IP{192, 168, 0, 0}, Mask: net.CIDRMask(16, 32)},
-	{IP: net.IP{127, 0, 0, 0}, Mask: net.CIDRMask(8, 32)},
-	{IP: net.IP{169, 254, 0, 0}, Mask: net.CIDRMask(16, 32)},
-}
-
-var privateNetworks6 = []net.IPNet{
-	{IP: net.ParseIP("::1"), Mask: net.CIDRMask(128, 128)},
-	{IP: net.ParseIP("fe80::"), Mask: net.CIDRMask(10, 128)},
-}
-
 func isPrivateIP(ip net.IP) bool {
-	if ip4 := ip.To4(); ip4 != nil {
-		for _, n := range privateNetworks {
-			if n.Contains(ip4) {
-				return true
-			}
-		}
-		return false
-	}
-	for _, n := range privateNetworks6 {
-		if n.Contains(ip) {
-			return true
-		}
-	}
-	return false
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified()
 }
 
 func (h *OAuthHandler) fetchCIMDMetadata(ctx context.Context, clientIDURL string) (*cimdMetadata, error) {

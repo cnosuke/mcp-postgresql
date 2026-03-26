@@ -27,7 +27,7 @@ func TestStorePendingAuthorization(t *testing.T) {
 
 	store.StorePendingAuthorization(pa)
 
-	got := store.GetPendingByCSRF("csrf-token-456")
+	got := store.ConsumePendingByCSRF("csrf-token-456")
 	require.NotNil(t, got)
 	assert.Equal(t, "client-1", got.ClientID)
 	assert.Equal(t, "Test Client", got.ClientName)
@@ -64,7 +64,7 @@ func TestConsumePendingByGoogleState(t *testing.T) {
 func TestGetPendingByCSRFNotFound(t *testing.T) {
 	store := NewOAuthStore()
 
-	got := store.GetPendingByCSRF("unknown-csrf-token")
+	got := store.ConsumePendingByCSRF("unknown-csrf-token")
 	assert.Nil(t, got)
 }
 
@@ -85,20 +85,21 @@ func TestStoreAndConsumeAuthCode(t *testing.T) {
 
 	store.StoreAuthCode(ac)
 
-	got := store.ConsumeAuthCode("auth-code-123")
+	got := store.GetAuthCode("auth-code-123")
 	require.NotNil(t, got)
 	assert.Equal(t, "client-1", got.ClientID)
 	assert.Equal(t, "user-42", got.UserID)
 	assert.Equal(t, "user@example.com", got.Email)
 
-	got2 := store.ConsumeAuthCode("auth-code-123")
+	store.ConsumeAuthCode("auth-code-123")
+	got2 := store.GetAuthCode("auth-code-123")
 	assert.Nil(t, got2)
 }
 
 func TestConsumeAuthCodeNotFound(t *testing.T) {
 	store := NewOAuthStore()
 
-	got := store.ConsumeAuthCode("unknown-code")
+	got := store.GetAuthCode("unknown-code")
 	assert.Nil(t, got)
 }
 
@@ -116,7 +117,7 @@ func TestCleanupExpiredPending(t *testing.T) {
 
 	store.Cleanup()
 
-	got := store.GetPendingByCSRF("expired-csrf")
+	got := store.ConsumePendingByCSRF("expired-csrf")
 	assert.Nil(t, got)
 
 	got2 := store.ConsumePendingByGoogleState("expired-state")
@@ -136,7 +137,7 @@ func TestCleanupExpiredAuthCode(t *testing.T) {
 
 	store.Cleanup()
 
-	got := store.ConsumeAuthCode("expired-code")
+	got := store.GetAuthCode("expired-code")
 	assert.Nil(t, got)
 }
 
@@ -160,11 +161,11 @@ func TestCleanupKeepsFresh(t *testing.T) {
 
 	store.Cleanup()
 
-	gotPA := store.GetPendingByCSRF("fresh-csrf")
+	gotPA := store.ConsumePendingByCSRF("fresh-csrf")
 	require.NotNil(t, gotPA)
 	assert.Equal(t, "client-fresh", gotPA.ClientID)
 
-	gotAC := store.ConsumeAuthCode("fresh-code")
+	gotAC := store.GetAuthCode("fresh-code")
 	require.NotNil(t, gotAC)
 	assert.Equal(t, "client-fresh", gotAC.ClientID)
 }

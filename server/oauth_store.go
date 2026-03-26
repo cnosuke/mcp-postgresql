@@ -60,7 +60,7 @@ func (s *OAuthStore) StorePendingAuthorization(pa *PendingAuthorization) {
 	s.csrfTokens[pa.CSRFToken] = pa.GoogleState
 }
 
-func (s *OAuthStore) GetPendingByCSRF(csrfToken string) *PendingAuthorization {
+func (s *OAuthStore) ConsumePendingByCSRF(csrfToken string) *PendingAuthorization {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -68,7 +68,13 @@ func (s *OAuthStore) GetPendingByCSRF(csrfToken string) *PendingAuthorization {
 	if !ok {
 		return nil
 	}
-	return s.pendingAuthz[googleState]
+	delete(s.csrfTokens, csrfToken)
+	pa := s.pendingAuthz[googleState]
+	if pa != nil && time.Since(pa.CreatedAt) > pendingAuthzTTL {
+		delete(s.pendingAuthz, googleState)
+		return nil
+	}
+	return pa
 }
 
 func (s *OAuthStore) ConsumePendingByGoogleState(googleState string) *PendingAuthorization {
@@ -81,6 +87,9 @@ func (s *OAuthStore) ConsumePendingByGoogleState(googleState string) *PendingAut
 	}
 	delete(s.pendingAuthz, googleState)
 	delete(s.csrfTokens, pa.CSRFToken)
+	if time.Since(pa.CreatedAt) > pendingAuthzTTL {
+		return nil
+	}
 	return pa
 }
 
@@ -91,7 +100,7 @@ func (s *OAuthStore) StoreAuthCode(ac *AuthorizationCode) {
 	s.authCodes[ac.Code] = ac
 }
 
-func (s *OAuthStore) ConsumeAuthCode(code string) *AuthorizationCode {
+func (s *OAuthStore) GetAuthCode(code string) *AuthorizationCode {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -99,8 +108,18 @@ func (s *OAuthStore) ConsumeAuthCode(code string) *AuthorizationCode {
 	if !ok {
 		return nil
 	}
-	delete(s.authCodes, code)
+	if time.Since(ac.CreatedAt) > authCodeTTL {
+		delete(s.authCodes, code)
+		return nil
+	}
 	return ac
+}
+
+func (s *OAuthStore) ConsumeAuthCode(code string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.authCodes, code)
 }
 
 func (s *OAuthStore) Cleanup() {

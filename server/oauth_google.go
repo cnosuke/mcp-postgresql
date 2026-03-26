@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -66,7 +67,7 @@ func (v *GoogleTokenValidator) fetchJWKS(ctx context.Context) error {
 	}
 
 	var jwksResp jwksResponse
-	if err := json.NewDecoder(resp.Body).Decode(&jwksResp); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&jwksResp); err != nil {
 		return errors.Wrap(err, "decoding JWKS response")
 	}
 
