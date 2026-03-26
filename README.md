@@ -107,6 +107,16 @@ All configuration options can be overridden via environment variables:
 | `HTTP_ENDPOINT` | MCP endpoint path | /mcp |
 | `HTTP_AUTH_TOKEN` | Bearer token for authentication | (empty) |
 | `HTTP_ALLOWED_ORIGINS` | Allowed Origin headers | (empty) |
+| `OAUTH_ENABLED` | Enable OAuth authentication | false |
+| `OAUTH_ISSUER` | Public HTTPS URL of the server | (empty) |
+| `OAUTH_SIGNING_KEY` | JWT signing key (>= 32 bytes) | (empty) |
+| `OAUTH_TOKEN_EXPIRY` | Token expiry in seconds | 3600 |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID | (empty) |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | (empty) |
+| `GOOGLE_ALLOWED_DOMAINS` | Allowed Google Workspace domains | (empty) |
+| `GOOGLE_ALLOWED_EMAILS` | Allowed email addresses | (empty) |
+
+See [OAuth setup guide](docs/oauth-setup.md) for details.
 
 ### DSN Formats
 
@@ -167,6 +177,20 @@ docker run -p 8080:8080 \
            -e POSTGRES_PASSWORD=secret \
            -e POSTGRES_DATABASE=mydb \
            -e HTTP_AUTH_TOKEN=your-secret-token \
+           cnosuke/mcp-postgresql http
+
+# HTTP transport with OAuth
+docker run -p 8080:8080 \
+           -e POSTGRES_HOST=host.docker.internal \
+           -e POSTGRES_USER=postgres \
+           -e POSTGRES_PASSWORD=secret \
+           -e POSTGRES_DATABASE=mydb \
+           -e OAUTH_ENABLED=true \
+           -e OAUTH_ISSUER=https://mcp.example.com \
+           -e OAUTH_SIGNING_KEY=$(openssl rand -hex 32) \
+           -e GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com \
+           -e GOOGLE_CLIENT_SECRET=your-client-secret \
+           -e GOOGLE_ALLOWED_DOMAINS=example.com \
            cnosuke/mcp-postgresql http
 ```
 

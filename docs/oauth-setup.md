@@ -120,6 +120,28 @@ oauth:
 | `GOOGLE_ALLOWED_DOMAINS` | Comma-separated allowed domains | (empty) |
 | `GOOGLE_ALLOWED_EMAILS` | Comma-separated allowed emails | (empty) |
 
+## Running with Docker
+
+```bash
+docker run -p 8080:8080 \
+  -e POSTGRES_HOST=host.docker.internal \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=secret \
+  -e POSTGRES_DATABASE=mydb \
+  -e OAUTH_ENABLED=true \
+  -e OAUTH_ISSUER=https://mcp.example.com \
+  -e OAUTH_SIGNING_KEY=$(openssl rand -hex 32) \
+  -e GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com \
+  -e GOOGLE_CLIENT_SECRET=your-client-secret \
+  -e GOOGLE_ALLOWED_DOMAINS=example.com \
+  cnosuke/mcp-postgresql http
+```
+
+When using a reverse proxy (nginx, Caddy, etc.) in front of Docker, ensure:
+- The proxy terminates TLS and forwards to `http://localhost:8080`
+- The `OAUTH_ISSUER` matches the public URL that clients will use
+- The Google OAuth redirect URI (`{issuer}/callback`) is registered in Google Cloud Console
+
 ## Connecting Clients
 
 ### Claude Code
