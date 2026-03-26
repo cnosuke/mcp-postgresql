@@ -102,7 +102,10 @@ func (h *OAuthHandler) AuthServerMetadataHandler() http.Handler {
 		CodeChallengeMethodsSupported:     []string{"S256"},
 		ClientIDMetadataDocumentSupported: true,
 	}
-	body, _ := json.Marshal(metadata)
+	body, err := json.Marshal(metadata)
+	if err != nil {
+		panic(fmt.Sprintf("failed to marshal auth server metadata: %v", err))
+	}
 
 	return withCORS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -404,7 +407,6 @@ func writeTokenError(w http.ResponseWriter, errCode, description string) {
 	})
 }
 
-
 func randomHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
@@ -455,7 +457,6 @@ func validateRedirectURI(requestURI string, allowedURIs []string) bool {
 	}
 	return false
 }
-
 
 type cimdMetadata struct {
 	ClientName   string   `json:"client_name"`
@@ -539,7 +540,6 @@ func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, e
 	}
 	return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
 }
-
 
 var consentPageTemplate = template.Must(template.New("consent").Parse(`<!DOCTYPE html>
 <html lang="en">

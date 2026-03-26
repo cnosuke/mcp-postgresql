@@ -167,7 +167,6 @@ func peekJSONRPCRequest(r *http.Request) (*jsonRPCInfo, error) {
 	return info, nil
 }
 
-
 // withRequestLogging wraps an http.Handler with request logging.
 func withRequestLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

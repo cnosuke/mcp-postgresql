@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -48,16 +49,16 @@ func (c *OAuthConfig) Validate() error {
 		return nil
 	}
 	if c.Issuer == "" {
-		return fmt.Errorf("oauth: issuer is required")
+		return errors.New("oauth: issuer is required")
 	}
 	if len(c.SigningKey) < 32 {
-		return fmt.Errorf("oauth: signing_key must be at least 32 bytes")
+		return fmt.Errorf("oauth: signing_key must be at least 32 bytes (got %d)", len(c.SigningKey))
 	}
 	if c.Google.ClientID == "" {
-		return fmt.Errorf("oauth: google.client_id is required")
+		return errors.New("oauth: google.client_id is required")
 	}
 	if c.Google.ClientSecret == "" {
-		return fmt.Errorf("oauth: google.client_secret is required")
+		return errors.New("oauth: google.client_secret is required")
 	}
 	return nil
 }
