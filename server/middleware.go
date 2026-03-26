@@ -122,35 +122,30 @@ type jsonRPCInfo struct {
 	ParamsSize int
 }
 
-// peekJSONRPCRequest reads the request body, extracts JSON-RPC metadata,
-// and restores the body for downstream handlers.
+// peekJSONRPCRequest reads the first 4KB of the request body to extract
+// JSON-RPC metadata, then restores the full body for downstream handlers
+// using io.MultiReader to avoid copying the entire body into memory.
 func peekJSONRPCRequest(r *http.Request) (*jsonRPCInfo, error) {
 	if r.Body == nil {
 		return nil, nil
 	}
 
-	body, err := io.ReadAll(r.Body)
+	peek, err := io.ReadAll(io.LimitReader(r.Body, 4096))
 	if err != nil {
 		r.Body = io.NopCloser(bytes.NewReader(nil))
 		return nil, err
 	}
-	r.Body = io.NopCloser(bytes.NewReader(body))
+	r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(peek), r.Body))
 
-	if len(body) == 0 {
+	if len(peek) == 0 {
 		return nil, nil
-	}
-
-	// Only parse the first 1MB for metadata extraction to limit memory usage
-	parseBody := body
-	if len(parseBody) > 1<<20 {
-		parseBody = parseBody[:1<<20]
 	}
 
 	var req struct {
 		Method string          `json:"method"`
 		Params json.RawMessage `json:"params"`
 	}
-	if err := json.Unmarshal(parseBody, &req); err != nil {
+	if err := json.Unmarshal(peek, &req); err != nil {
 		return nil, nil
 	}
 
