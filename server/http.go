@@ -16,6 +16,10 @@ import (
 
 // RunHTTP starts the MCP server with Streamable HTTP transport
 func RunHTTP(cfg *config.Config, name, version, revision string) error {
+	if err := cfg.OAuth.Validate(); err != nil {
+		return err
+	}
+
 	zap.S().Infow("starting MCP PostgreSQL Server (HTTP mode)")
 
 	mcpServer, err := NewMCPServer(cfg, name, version, revision)
@@ -37,15 +41,40 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 		},
 	)
 
-	handler := withRequestLogging(
-		withOriginValidation(
-			withAuthMiddleware(httpHandler, cfg.HTTP.AuthToken),
-			cfg.HTTP.AllowedOrigins,
-		),
-	)
-
 	mux := http.NewServeMux()
-	mux.Handle(cfg.HTTP.Endpoint, handler)
+
+	if cfg.OAuth.Enabled {
+		zap.S().Infow("OAuth authentication enabled", "issuer", cfg.OAuth.NormalizedIssuer())
+
+		oauthHandler := NewOAuthHandler(cfg)
+		issuer := cfg.OAuth.NormalizedIssuer()
+		resourceURL := issuer + cfg.HTTP.Endpoint
+		resourceMetadataURL := issuer + "/.well-known/oauth-protected-resource"
+
+		mcpHandler := withRequestLogging(
+			withOriginValidation(
+				withOAuthMiddleware(httpHandler, oauthHandler.jwtMgr, resourceMetadataURL, resourceURL),
+				cfg.HTTP.AllowedOrigins,
+			),
+		)
+		mux.Handle(cfg.HTTP.Endpoint, mcpHandler)
+
+		mux.Handle("/.well-known/oauth-protected-resource", oauthHandler.ProtectedResourceMetadataHandler())
+		mux.HandleFunc("/.well-known/oauth-authorization-server", oauthHandler.HandleAuthServerMetadata)
+		mux.HandleFunc("/authorize", oauthHandler.HandleAuthorize)
+		mux.HandleFunc("/consent", oauthHandler.HandleConsent)
+		mux.HandleFunc("/callback", oauthHandler.HandleCallback)
+		mux.HandleFunc("/token", oauthHandler.HandleToken)
+	} else {
+		handler := withRequestLogging(
+			withOriginValidation(
+				withAuthMiddleware(httpHandler, cfg.HTTP.AuthToken),
+				cfg.HTTP.AllowedOrigins,
+			),
+		)
+		mux.Handle(cfg.HTTP.Endpoint, handler)
+	}
+
 	mux.HandleFunc("/health", handleHealth)
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)

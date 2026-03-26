@@ -20,6 +20,22 @@ http:
   auth_token: ''
   allowed_origins: []
 
+# oauth:
+#   enabled: false
+#   issuer: 'https://mcp.example.com'
+#   signing_key: ''  # at least 32 bytes
+#   token_expiry: 3600
+#   google:
+#     client_id: ''
+#     client_secret: ''
+#     allowed_domains: []
+#     allowed_emails: []
+#   clients:
+#     - client_id: 'my-desktop-app'
+#       client_name: 'My Desktop App'
+#       redirect_uris:
+#         - 'http://localhost:3000/callback'
+
 # presets:
 #   production:
 #     host: 'prod-db.example.com'

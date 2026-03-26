@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	"go.uber.org/zap"
 )
 
@@ -164,6 +165,14 @@ func peekJSONRPCRequest(r *http.Request) (*jsonRPCInfo, error) {
 	}
 
 	return info, nil
+}
+
+func withOAuthMiddleware(next http.Handler, jwtMgr *JWTManager, resourceMetadataURL, resourceURL string) http.Handler {
+	verifier := jwtMgr.MakeTokenVerifier(resourceURL)
+	middleware := auth.RequireBearerToken(verifier, &auth.RequireBearerTokenOptions{
+		ResourceMetadataURL: resourceMetadataURL,
+	})
+	return middleware(next)
 }
 
 // withRequestLogging wraps an http.Handler with request logging.
