@@ -261,7 +261,7 @@ func TestHandleToken_InvalidCode(t *testing.T) {
 		"code":          {"nonexistent-code"},
 		"redirect_uri":  {"https://example.com/callback"},
 		"client_id":     {"test-client"},
-		"code_verifier": {"some-verifier"},
+		"code_verifier": {"some-verifier-that-is-at-least-43-characters-long"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -276,7 +276,7 @@ func TestHandleToken_InvalidCode(t *testing.T) {
 func TestHandleToken_PKCEFailure(t *testing.T) {
 	h := testOAuthHandler()
 
-	correctVerifier := "correct-verifier-long-enough-for-testing"
+	correctVerifier := "correct-verifier-long-enough-for-testing-43"
 	hash := sha256.Sum256([]byte(correctVerifier))
 	codeChallenge := base64.RawURLEncoding.EncodeToString(hash[:])
 
@@ -297,7 +297,7 @@ func TestHandleToken_PKCEFailure(t *testing.T) {
 		"code":          {authCode},
 		"redirect_uri":  {"https://example.com/callback"},
 		"client_id":     {"test-client"},
-		"code_verifier": {"wrong-verifier"},
+		"code_verifier": {"wrong-verifier-that-is-at-least-43-characters-long"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/token", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -312,7 +312,7 @@ func TestHandleToken_PKCEFailure(t *testing.T) {
 func TestHandleToken_ClientIDMismatch(t *testing.T) {
 	h := testOAuthHandler()
 
-	codeVerifier := "verifier-for-client-mismatch-test"
+	codeVerifier := "verifier-for-client-mismatch-test-at-least-43chars"
 	hash := sha256.Sum256([]byte(codeVerifier))
 	codeChallenge := base64.RawURLEncoding.EncodeToString(hash[:])
 

@@ -85,21 +85,21 @@ func TestStoreAndConsumeAuthCode(t *testing.T) {
 
 	store.StoreAuthCode(ac)
 
-	got := store.GetAuthCode("auth-code-123")
+	got := store.ConsumeAuthCode("auth-code-123")
 	require.NotNil(t, got)
 	assert.Equal(t, "client-1", got.ClientID)
 	assert.Equal(t, "user-42", got.UserID)
 	assert.Equal(t, "user@example.com", got.Email)
 
 	store.ConsumeAuthCode("auth-code-123")
-	got2 := store.GetAuthCode("auth-code-123")
+	got2 := store.ConsumeAuthCode("auth-code-123")
 	assert.Nil(t, got2)
 }
 
 func TestConsumeAuthCodeNotFound(t *testing.T) {
 	store := NewOAuthStore()
 
-	got := store.GetAuthCode("unknown-code")
+	got := store.ConsumeAuthCode("unknown-code")
 	assert.Nil(t, got)
 }
 
@@ -137,7 +137,7 @@ func TestCleanupExpiredAuthCode(t *testing.T) {
 
 	store.Cleanup()
 
-	got := store.GetAuthCode("expired-code")
+	got := store.ConsumeAuthCode("expired-code")
 	assert.Nil(t, got)
 }
 
@@ -165,7 +165,7 @@ func TestCleanupKeepsFresh(t *testing.T) {
 	require.NotNil(t, gotPA)
 	assert.Equal(t, "client-fresh", gotPA.ClientID)
 
-	gotAC := store.GetAuthCode("fresh-code")
+	gotAC := store.ConsumeAuthCode("fresh-code")
 	require.NotNil(t, gotAC)
 	assert.Equal(t, "client-fresh", gotAC.ClientID)
 }

@@ -345,8 +345,12 @@ func (h *OAuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeTokenError(w, "unsupported_grant_type", "only authorization_code is supported")
 		return
 	}
+	if len(codeVerifier) < 43 || len(codeVerifier) > 128 {
+		writeTokenError(w, "invalid_grant", "code_verifier must be 43-128 characters (RFC 7636)")
+		return
+	}
 
-	ac := h.store.GetAuthCode(code)
+	ac := h.store.ConsumeAuthCode(code)
 	if ac == nil {
 		writeTokenError(w, "invalid_grant", "invalid or expired authorization code")
 		return
@@ -367,8 +371,6 @@ func (h *OAuthHandler) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeTokenError(w, "invalid_grant", "PKCE verification failed")
 		return
 	}
-
-	h.store.ConsumeAuthCode(code)
 
 	audience := ac.Resource
 	if audience == "" {

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/jinzhu/configor"
@@ -50,6 +51,22 @@ func (c *OAuthConfig) Validate() error {
 	}
 	if c.Issuer == "" {
 		return errors.New("oauth: issuer is required")
+	}
+	u, err := url.Parse(c.Issuer)
+	if err != nil {
+		return fmt.Errorf("oauth: invalid issuer URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return errors.New("oauth: issuer must use https scheme")
+	}
+	if u.Host == "" {
+		return errors.New("oauth: issuer must have a host")
+	}
+	if u.Path != "" && u.Path != "/" {
+		return errors.New("oauth: issuer must not have a path component")
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("oauth: issuer must not have query or fragment")
 	}
 	if len(c.SigningKey) < 32 {
 		return fmt.Errorf("oauth: signing_key must be at least 32 bytes (got %d)", len(c.SigningKey))

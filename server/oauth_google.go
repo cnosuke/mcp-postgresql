@@ -231,6 +231,10 @@ func (v *GoogleTokenValidator) ValidateGoogleIDToken(ctx context.Context, idToke
 }
 
 func CheckAccess(claims *GoogleIDTokenClaims, allowedDomains, allowedEmails []string) error {
+	if !claims.EmailVerified {
+		return errors.New("access denied: email not verified")
+	}
+
 	if len(allowedDomains) == 0 && len(allowedEmails) == 0 {
 		return nil
 	}
@@ -241,14 +245,9 @@ func CheckAccess(claims *GoogleIDTokenClaims, allowedDomains, allowedEmails []st
 		}
 	}
 
-	if len(allowedDomains) > 0 {
-		if claims.HostedDomain == "" && !claims.EmailVerified {
-			return errors.New("access denied: no hosted domain and email not verified")
-		}
-		for _, domain := range allowedDomains {
-			if claims.HostedDomain == domain {
-				return nil
-			}
+	for _, domain := range allowedDomains {
+		if claims.HostedDomain == domain {
+			return nil
 		}
 	}
 

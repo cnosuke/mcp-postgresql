@@ -100,7 +100,7 @@ func (s *OAuthStore) StoreAuthCode(ac *AuthorizationCode) {
 	s.authCodes[ac.Code] = ac
 }
 
-func (s *OAuthStore) GetAuthCode(code string) *AuthorizationCode {
+func (s *OAuthStore) ConsumeAuthCode(code string) *AuthorizationCode {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -108,18 +108,11 @@ func (s *OAuthStore) GetAuthCode(code string) *AuthorizationCode {
 	if !ok {
 		return nil
 	}
+	delete(s.authCodes, code)
 	if time.Since(ac.CreatedAt) > authCodeTTL {
-		delete(s.authCodes, code)
 		return nil
 	}
 	return ac
-}
-
-func (s *OAuthStore) ConsumeAuthCode(code string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	delete(s.authCodes, code)
 }
 
 func (s *OAuthStore) Cleanup() {
