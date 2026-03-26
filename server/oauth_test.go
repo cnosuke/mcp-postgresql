@@ -267,7 +267,7 @@ func TestHandleToken_InvalidCode(t *testing.T) {
 	h.HandleToken(rec, req)
 
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
-	assert.Contains(t, rec.Body.String(), "invalid or expired code")
+	assert.Contains(t, rec.Body.String(), "invalid_grant")
 }
 
 func TestHandleToken_PKCEFailure(t *testing.T) {
@@ -378,7 +378,8 @@ func TestValidateRedirectURI(t *testing.T) {
 		{"exact match https", "https://example.com/callback", allowed, true},
 		{"exact match localhost", "http://localhost:3000/callback", allowed, true},
 		{"loopback different port", "http://localhost:9999/callback", allowed, true},
-		{"loopback 127.0.0.1", "http://127.0.0.1:5000/callback", allowed, true},
+		{"loopback 127.0.0.1 no match", "http://127.0.0.1:5000/callback", allowed, false},
+		{"loopback 127.0.0.1 with allowed", "http://127.0.0.1:5000/callback", append(allowed, "http://127.0.0.1:3000/callback"), true},
 		{"no match", "https://evil.com/callback", allowed, false},
 		{"no match different path", "https://example.com/other", allowed, false},
 		{"empty allowed list", "https://example.com/callback", []string{}, false},

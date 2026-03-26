@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -32,9 +34,9 @@ type OAuthHandler struct {
 	googleOAuth2Config *oauth2.Config
 }
 
-func NewOAuthHandler(cfg *config.Config) *OAuthHandler {
+func NewOAuthHandler(ctx context.Context, cfg *config.Config) *OAuthHandler {
 	store := NewOAuthStore()
-	store.StartCleanupLoop(context.Background(), 1*time.Minute)
+	store.StartCleanupLoop(ctx, 1*time.Minute)
 
 	issuer := cfg.OAuth.NormalizedIssuer()
 
@@ -97,6 +99,11 @@ func (h *OAuthHandler) HandleAuthServerMetadata(w http.ResponseWriter, r *http.R
 }
 
 func (h *OAuthHandler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	q := r.URL.Query()
 	clientID := q.Get("client_id")
 	redirectURI := q.Get("redirect_uri")
@@ -115,8 +122,11 @@ func (h *OAuthHandler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "code_challenge is required", http.StatusBadRequest)
 		return
 	}
-	if codeChallengeMethod != "" && codeChallengeMethod != "S256" {
-		http.Error(w, "unsupported code_challenge_method", http.StatusBadRequest)
+	if codeChallengeMethod == "" {
+		codeChallengeMethod = "S256"
+	}
+	if codeChallengeMethod != "S256" {
+		http.Error(w, "unsupported code_challenge_method: only S256 is supported", http.StatusBadRequest)
 		return
 	}
 
@@ -185,6 +195,11 @@ func (h *OAuthHandler) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OAuthHandler) HandleConsent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "invalid form data", http.StatusBadRequest)
 		return
@@ -208,6 +223,11 @@ func (h *OAuthHandler) HandleConsent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OAuthHandler) HandleCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	code := r.URL.Query().Get("code")
 	googleState := r.URL.Query().Get("state")
 
@@ -301,29 +321,29 @@ func (h *OAuthHandler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	codeVerifier := r.FormValue("code_verifier")
 
 	if grantType != "authorization_code" {
-		http.Error(w, "unsupported grant_type", http.StatusBadRequest)
+		writeTokenError(w, "unsupported_grant_type", "only authorization_code is supported")
 		return
 	}
 
 	ac := h.store.ConsumeAuthCode(code)
 	if ac == nil {
-		http.Error(w, "invalid or expired code", http.StatusBadRequest)
+		writeTokenError(w, "invalid_grant", "invalid or expired authorization code")
 		return
 	}
 
 	if ac.ClientID != clientID {
-		http.Error(w, "client_id mismatch", http.StatusBadRequest)
+		writeTokenError(w, "invalid_grant", "client_id mismatch")
 		return
 	}
 	if ac.RedirectURI != redirectURI {
-		http.Error(w, "redirect_uri mismatch", http.StatusBadRequest)
+		writeTokenError(w, "invalid_grant", "redirect_uri mismatch")
 		return
 	}
 
 	hash := sha256.Sum256([]byte(codeVerifier))
 	computed := base64.RawURLEncoding.EncodeToString(hash[:])
-	if computed != ac.CodeChallenge {
-		http.Error(w, "PKCE verification failed", http.StatusBadRequest)
+	if subtle.ConstantTimeCompare([]byte(computed), []byte(ac.CodeChallenge)) != 1 {
+		writeTokenError(w, "invalid_grant", "PKCE verification failed")
 		return
 	}
 
@@ -346,6 +366,16 @@ func (h *OAuthHandler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		"token_type":   "Bearer",
 		"expires_in":   h.cfg.OAuth.TokenExpiry,
 		"scope":        "mcp",
+	})
+}
+
+func writeTokenError(w http.ResponseWriter, errCode, description string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusBadRequest)
+	json.NewEncoder(w).Encode(map[string]string{
+		"error":             errCode,
+		"error_description": description,
 	})
 }
 
@@ -383,12 +413,15 @@ func validateRedirectURI(requestURI string, allowedURIs []string) bool {
 				if err != nil {
 					continue
 				}
-				if reqURL.Scheme == allowedURL.Scheme && reqURL.Hostname() == allowedURL.Hostname() {
+				// RFC 8252: loopback URIs match on scheme+host+path, port is ignored
+				if reqURL.Scheme == allowedURL.Scheme &&
+					reqURL.Hostname() == allowedURL.Hostname() &&
+					reqURL.Path == allowedURL.Path {
 					return true
 				}
 			}
 		}
-		return true
+		return false
 	}
 
 	for _, allowed := range allowedURIs {
@@ -438,26 +471,17 @@ func isPrivateIP(ip net.IP) bool {
 }
 
 func fetchCIMDMetadata(ctx context.Context, clientIDURL string) (*cimdMetadata, error) {
-	u, err := url.Parse(clientIDURL)
-	if err != nil {
+	if _, err := url.Parse(clientIDURL); err != nil {
 		return nil, errors.Wrap(err, "parsing client_id URL")
-	}
-
-	host := u.Hostname()
-	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-	if err != nil {
-		return nil, errors.Wrap(err, "resolving hostname")
-	}
-	for _, ip := range ips {
-		if isPrivateIP(ip.IP) {
-			return nil, errors.Newf("SSRF protection: %s resolves to private IP %s", host, ip.IP)
-		}
 	}
 
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return errors.New("redirects are not allowed")
+		},
+		Transport: &http.Transport{
+			DialContext: ssrfSafeDialContext,
 		},
 	}
 
@@ -477,10 +501,30 @@ func fetchCIMDMetadata(ctx context.Context, clientIDURL string) (*cimdMetadata, 
 	}
 
 	var meta cimdMetadata
-	if err := json.NewDecoder(resp.Body).Decode(&meta); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&meta); err != nil {
 		return nil, errors.Wrap(err, "decoding CIMD response")
 	}
 	return &meta, nil
+}
+
+func ssrfSafeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	for _, ip := range ips {
+		if isPrivateIP(ip.IP) {
+			return nil, fmt.Errorf("SSRF protection: connection to private IP %s blocked", ip.IP)
+		}
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no IP addresses found for %s", host)
+	}
+	return (&net.Dialer{Timeout: 5 * time.Second}).DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
 }
 
 // --- Consent Page Template ---

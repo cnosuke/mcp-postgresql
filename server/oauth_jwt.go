@@ -10,6 +10,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/modelcontextprotocol/go-sdk/auth"
+	"go.uber.org/zap"
 )
 
 type JWTManager struct {
@@ -55,6 +56,9 @@ func (m *JWTManager) IssueAccessToken(userID, email, scope, audience, clientID s
 func (m *JWTManager) VerifyAccessToken(tokenString, expectedAudience string) (*AccessTokenClaims, error) {
 	claims := &AccessTokenClaims{}
 	_, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
 		return m.signingKey, nil
 	}, jwt.WithIssuer(m.issuer))
 	if err != nil {
@@ -72,6 +76,7 @@ func (m *JWTManager) MakeTokenVerifier(expectedAudience string) auth.TokenVerifi
 	return func(_ context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 		claims, err := m.VerifyAccessToken(token, expectedAudience)
 		if err != nil {
+			zap.S().Debugw("access token verification failed", "error", err)
 			return nil, fmt.Errorf("access token verification failed: %w", auth.ErrInvalidToken)
 		}
 

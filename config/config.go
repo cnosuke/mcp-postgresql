@@ -59,7 +59,6 @@ func (c *OAuthConfig) Validate() error {
 	if c.Google.ClientSecret == "" {
 		return fmt.Errorf("oauth: google.client_secret is required")
 	}
-	c.Issuer = strings.TrimRight(c.Issuer, "/")
 	return nil
 }
 

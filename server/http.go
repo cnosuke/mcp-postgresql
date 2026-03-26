@@ -41,12 +41,15 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 		},
 	)
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	mux := http.NewServeMux()
 
 	if cfg.OAuth.Enabled {
 		zap.S().Infow("OAuth authentication enabled", "issuer", cfg.OAuth.NormalizedIssuer())
 
-		oauthHandler := NewOAuthHandler(cfg)
+		oauthHandler := NewOAuthHandler(ctx, cfg)
 		issuer := cfg.OAuth.NormalizedIssuer()
 		resourceURL := issuer + cfg.HTTP.Endpoint
 		resourceMetadataURL := issuer + "/.well-known/oauth-protected-resource"
@@ -83,9 +86,6 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	errCh := make(chan error, 1)
 	go func() {
