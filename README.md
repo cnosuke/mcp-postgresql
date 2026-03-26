@@ -16,6 +16,7 @@ A Model Context Protocol (MCP) server implementation for PostgreSQL.
 - Connection presets for secure multi-database access (LLM never sees passwords)
 - **Dual transport**: stdio and Streamable HTTP (MCP spec 2025-11-25)
 - Bearer token authentication and Origin validation for HTTP transport
+- **Google Workspace OAuth 2.0** authentication ([setup guide](docs/oauth-setup.md))
 
 ## Installation
 
@@ -146,6 +147,7 @@ postgresql://postgres:secret@localhost:5432/mydb?sslmode=disable
 The HTTP transport supports:
 - **Origin validation** (MCP spec MUST requirement, DNS rebinding prevention)
 - **Bearer token authentication** (timing-safe comparison)
+- **Google Workspace OAuth 2.0** (PKCE, CIMD, Google ID token validation) — see [OAuth setup guide](docs/oauth-setup.md)
 - **Health check endpoint** at `/health` (no authentication required)
 
 ### Docker
