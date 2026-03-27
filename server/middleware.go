@@ -55,6 +55,7 @@ func withAuthMiddleware(next http.Handler, authToken string) http.Handler {
 		return next
 	}
 
+	expected := []byte(authToken)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := extractBearerToken(r)
 		if token == "" {
@@ -62,7 +63,7 @@ func withAuthMiddleware(next http.Handler, authToken string) http.Handler {
 			return
 		}
 
-		if subtle.ConstantTimeCompare([]byte(token), []byte(authToken)) != 1 {
+		if subtle.ConstantTimeCompare([]byte(token), expected) != 1 {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

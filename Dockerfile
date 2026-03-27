@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine as builder
+FROM golang:1.25-alpine as builder
 
 # Install build dependencies
 RUN apk add --no-cache make git
@@ -39,14 +39,25 @@ ENV POSTGRES_SCHEMA="public"
 ENV POSTGRES_SSLMODE="disable"
 ENV POSTGRES_DSN=""
 ENV POSTGRES_READ_ONLY="false"
+ENV POSTGRES_QUERY_TIMEOUT="30"
 ENV HTTP_HOST="0.0.0.0"
 ENV HTTP_PORT="8080"
 ENV HTTP_ENDPOINT="/mcp"
 ENV HTTP_AUTH_TOKEN=""
 ENV HTTP_ALLOWED_ORIGINS=""
+ENV OAUTH_ENABLED="false"
+ENV OAUTH_ISSUER=""
+ENV OAUTH_SIGNING_KEY=""
+ENV OAUTH_TOKEN_EXPIRY="3600"
+ENV GOOGLE_CLIENT_ID=""
+ENV GOOGLE_CLIENT_SECRET=""
+ENV GOOGLE_ALLOWED_DOMAINS=""
+ENV GOOGLE_ALLOWED_EMAILS=""
 
 # Expose HTTP port
 EXPOSE 8080
 
-# Set entrypoint (stdio transport by default; override with "http" for HTTP transport)
-ENTRYPOINT ["/app/bin/mcp-postgresql", "server", "--config=/app/config.yml"]
+# Default: stdio transport. Override with "http" for HTTP transport:
+#   docker run ... cnosuke/mcp-postgresql http --config=/app/config.yml
+ENTRYPOINT ["/app/bin/mcp-postgresql"]
+CMD ["server", "--config=/app/config.yml"]

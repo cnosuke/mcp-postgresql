@@ -51,7 +51,7 @@ func main() {
 					if err := logger.InitLogger(cfg.LogLevel, cfg.Log, true); err != nil {
 						return errors.Wrap(err, "failed to initialize logger")
 					}
-					defer logger.Sync()
+					defer func() { _ = logger.Sync() }()
 
 					defer func() {
 						if err := server.CloseDB(); err != nil {
@@ -84,7 +84,7 @@ func main() {
 					if err := logger.InitLogger(cfg.LogLevel, cfg.Log, false); err != nil {
 						return errors.Wrap(err, "failed to initialize logger")
 					}
-					defer logger.Sync()
+					defer func() { _ = logger.Sync() }()
 
 					defer func() {
 						if err := server.CloseDB(); err != nil {

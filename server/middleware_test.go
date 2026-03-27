@@ -168,7 +168,7 @@ func TestStatusWriter(t *testing.T) {
 	t.Run("default status is 200", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		sw := &statusWriter{ResponseWriter: rec, code: http.StatusOK}
-		sw.Write([]byte("hello"))
+		_, _ = sw.Write([]byte("hello"))
 		assert.Equal(t, http.StatusOK, sw.code)
 	})
 
@@ -243,7 +243,7 @@ func TestWithRequestLogging(t *testing.T) {
 		inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			called = true
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("ok"))
+			_, _ = w.Write([]byte("ok"))
 		})
 
 		handler := withRequestLogging(inner)

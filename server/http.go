@@ -16,6 +16,10 @@ import (
 
 // RunHTTP starts the MCP server with Streamable HTTP transport
 func RunHTTP(cfg *config.Config, name, version, revision string) error {
+	if err := cfg.OAuth.Validate(); err != nil {
+		return err
+	}
+
 	zap.S().Infow("starting MCP PostgreSQL Server (HTTP mode)")
 
 	mcpServer, err := NewMCPServer(cfg, name, version, revision)
@@ -37,15 +41,40 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 		},
 	)
 
-	handler := withRequestLogging(
-		withOriginValidation(
-			withAuthMiddleware(httpHandler, cfg.HTTP.AuthToken),
-			cfg.HTTP.AllowedOrigins,
-		),
-	)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
 	mux := http.NewServeMux()
-	mux.Handle(cfg.HTTP.Endpoint, handler)
+
+	if cfg.OAuth.Enabled {
+		zap.S().Infow("OAuth authentication enabled", "issuer", cfg.OAuth.NormalizedIssuer())
+
+		oauthHandler := NewOAuthHandler(ctx, cfg)
+
+		mcpHandler := withRequestLogging(
+			withOriginValidation(
+				oauthHandler.MakeOAuthMiddleware(httpHandler),
+				cfg.HTTP.AllowedOrigins,
+			),
+		)
+		mux.Handle(cfg.HTTP.Endpoint, mcpHandler)
+
+		mux.Handle("/.well-known/oauth-protected-resource", oauthHandler.ProtectedResourceMetadataHandler())
+		mux.Handle("/.well-known/oauth-authorization-server", oauthHandler.AuthServerMetadataHandler())
+		mux.HandleFunc("/authorize", oauthHandler.HandleAuthorize)
+		mux.HandleFunc("/consent", oauthHandler.HandleConsent)
+		mux.HandleFunc("/callback", oauthHandler.HandleCallback)
+		mux.Handle("/token", oauthHandler.TokenHandler())
+	} else {
+		handler := withRequestLogging(
+			withOriginValidation(
+				withAuthMiddleware(httpHandler, cfg.HTTP.AuthToken),
+				cfg.HTTP.AllowedOrigins,
+			),
+		)
+		mux.Handle(cfg.HTTP.Endpoint, handler)
+	}
+
 	mux.HandleFunc("/health", handleHealth)
 
 	addr := fmt.Sprintf("%s:%d", cfg.HTTP.Host, cfg.HTTP.Port)
@@ -54,9 +83,6 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 		Handler:           mux,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -90,5 +116,5 @@ func RunHTTP(cfg *config.Config, name, version, revision string) error {
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(`{"status":"ok"}` + "\n"))
+	_, _ = w.Write([]byte(`{"status":"ok"}` + "\n"))
 }
